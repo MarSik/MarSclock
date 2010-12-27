@@ -1,0 +1,509 @@
+#include <WProgram.h>
+
+#include "Streaming.h"
+#include "I2CLiquidCrystal.h"
+#include "Wire.h"
+#include "VirtualWire.h"
+#include "FiniteStateMachine.h"
+#include "EventDispatcher.h"
+#include "EventQueue.h"
+#include "Events.h"
+#include "BudikEvents.h"
+#include "BudikStates.h"
+#include "BudikInterfaces.h"
+#include "utils.h"
+#include "config.h"
+
+// I2C hooked LCD
+I2CLiquidCrystal lcd(I2CDATA, I2CLCD, 6, 5, 4, 0, 1, 2, 3);
+
+// Interfaces
+BudikBasicInterface intf_time(lcd);
+BudikMenuInterface intf_menu(lcd);
+BudikBacklightInterface intf_backlight(lcd);
+BudikSetTimeInterface intf_settime(lcd);
+
+// FSM transition prototypes
+void ste_tomainmenu();
+void ste_tosettime();
+void ste_totime();
+void ste_tobacklight();
+
+// FSM states
+TimeState st_time(intf_time, ste_tomainmenu, ste_tosettime);
+SetTimeState st_settime(intf_settime, ste_totime);
+MenuState<5> st_mainmenu(intf_menu, "");
+MenuState<2> st_submenu(intf_menu, "Sub menu");
+BacklightState st_backlight(intf_backlight, 4, ste_tomainmenu);
+
+// FSM engine
+FiniteStateMachine fsm(st_time);
+
+// FSM transitions
+void ste_totime() {fsm.transitionTo(st_time);}
+void ste_tosettime() {fsm.transitionTo(st_settime);}
+void ste_tomainmenu() {fsm.transitionTo(st_mainmenu);}
+void ste_tosubmenu() {fsm.transitionTo(st_submenu);}
+void ste_tobacklight() {fsm.transitionTo(st_backlight);}
+
+// rotary selector
+#define ROTX 9
+#define ROTA 12
+#define ROTB 3
+#define INTROT ROTB-2
+uint8_t rotPos = 4;
+
+// RTC Addresses
+int HOUR = 0xB;
+int MINUTE = 0xA;
+int SECOND = 0x9;
+int CENTURY = 0x8;
+
+// 555 timer at about 200Hz
+#define TIMER 2
+#define INT555 TIMER-2 //interrupt 0, pin 2
+#define SKIP555 1800 // about 10s
+
+// Button debounce counter
+#define DEBOUNCETIME 20
+#define HOLDTIME 3000
+long debouncems = 0;
+
+void writeI2CData(int address, byte block, byte data);
+
+void setAddr(int val)
+{
+	int i;
+	
+	writeI2CData(I2CADDR, 0x0, 0xF0+val);
+	writeI2CData(I2CADDR, 0x1, 0xFF);
+	
+	delay(30);
+}
+
+
+void wakeupTimer(void)
+{
+	static long timer555 = 0;
+	if(timer555==0){
+		queue.enqueueEvent(EV_REFRESH, 0);
+		timer555 = SKIP555;
+	}
+	else timer555--;
+}
+
+void rotInterrupt(void)
+{
+	if(millis() - debouncems < DEBOUNCETIME) return;
+	debouncems = millis();
+	
+	uint8_t b = digitalRead(ROTB);
+	uint8_t a = digitalRead(ROTA);
+	
+	if(b == a){
+		queue.enqueueEvent(EV_RIGHT, 0);
+	}
+	else{
+		queue.enqueueEvent(EV_LEFT, 0);
+	}
+}
+
+void setup() {
+	// RTC WE  & OE
+	pinMode(WE, OUTPUT);
+	pinMode(OE, OUTPUT);
+	pinMode(CE, OUTPUT);
+	digitalWrite(WE, 1); // disable write
+	digitalWrite(OE, 1); // disable read
+	digitalWrite(CE, 0); // enable shield devices
+	
+	// Setup Timer
+	pinMode(TIMER, INPUT);
+	
+	// Setup Temp.
+	analogReference(DEFAULT);
+	pinMode(TEMPERATURE, INPUT);
+	pinMode(A0, INPUT);
+	
+	// Setup LCD backlight
+	analogWrite(LCDLIGHT, 128);
+	
+	// Setup serial link
+	Serial.begin(9600);
+	
+	//Setup I2c
+	Wire.begin();
+	
+	// Setup MCP23016
+	delay(100); // min 75ms power up timer
+	writeI2CData(I2CADDR, 0x6, 0x0); // Set output mode
+	writeI2CData(I2CADDR, 0x7, 0x0);
+	writeI2CData(I2CADDR, 0x0, 0xFF); // Set address
+	writeI2CData(I2CADDR, 0x1, 0xFF);
+	
+	writeI2CData(I2CDATA, 0x6 + I2CLCD, 0x0); // LCD set output mode
+	writeI2CData(I2CDATA, 0x6 + I2CRTC, 0xFF); // RTC set input mode
+	writeI2CData(I2CDATA, I2CLCD, 0x80); // highest bit is used for address
+	
+	// set high resolution mode for I2C expander DATA RTC port
+	writeI2CData(I2CDATA, 0xA + I2CRTC, 0x1);
+	
+	//Init lcd
+	delay(200);
+	lcd.begin();
+	lcd.clear();
+	
+	// Init 555 interrupt
+	pinMode(TIMER, INPUT);
+	attachInterrupt(INT555, wakeupTimer, FALLING);
+	
+        // Init states
+        st_mainmenu.addMenuItem(0, "Podsviceni", ste_tobacklight);
+        st_mainmenu.addMenuItem(1, "Casovac", ste_tosubmenu);
+        st_mainmenu.addMenuItem(2, "Akce", ste_tosubmenu);
+        st_mainmenu.addMenuItem(3, "Senzory", ste_tosubmenu);
+        st_mainmenu.addMenuItem(4, "Zpet", ste_totime);
+
+        st_submenu.addMenuItem(0, "Zpet do menu", ste_tomainmenu);
+        st_submenu.addMenuItem(1, "Podsviceni", ste_tobacklight);
+        
+	// Init rotary
+	pinMode(ROTA, INPUT);
+	pinMode(ROTB, INPUT);
+	pinMode(ROTX, INPUT);
+	digitalWrite(ROTA, HIGH);
+	digitalWrite(ROTB, HIGH);
+	digitalWrite(ROTX, HIGH);
+	attachInterrupt(INTROT, rotInterrupt, CHANGE);
+	
+	//enable Pin Change Int for rotary button = PCINT1, port 9 (PB1)
+	PCMSK0 = _BV(PCINT1);
+	PCICR |= _BV(PCIE0); 
+
+        // Inital refresh of gui
+	queue.enqueueEvent(EV_BACKLIGHT, rotPos);
+        queue.enqueueEvent(EV_REFRESH, 0);
+
+	Serial.println("Setup done");
+}
+
+// Pin Change vector 0 (Port B)
+ISR(PCINT0_vect){
+        static uint8_t oldstate = 0;
+
+	if(millis() - debouncems < DEBOUNCETIME) return;
+
+        // change from LOW to HIGH (active LOW)
+        // hold event after 3s
+        if(!oldstate &&
+           (PINB & 0x02) &&
+           (millis()-debouncems) >= HOLDTIME){
+            queue.enqueueEvent(EV_HOLD, (PINB & 0x02));
+        }
+        else if(!oldstate && (PINB & 0x02)){
+            queue.enqueueEvent(EV_SELECT, (PINB & 0x02));
+        }
+        else{
+            queue.enqueueEvent(EV_SELECT, (PINB & 0x02));
+        }
+
+	debouncems = millis();
+        oldstate = (PINB & 0x02);
+}
+
+int readI2CMux(int address)
+{
+	int GP0 = 0;
+	int GP1 = 0;
+	
+	digitalWrite(WE, 1);
+	digitalWrite(OE, 0);
+	
+	delayMicroseconds(I2CREADDELAYUS); // standard delay of the I2C chip
+	
+	// query
+	Wire.beginTransmission(address);
+	Wire.send(I2CRTC);
+	Wire.endTransmission();
+	
+	// reply
+	Wire.requestFrom(address, 1);
+	
+	delayMicroseconds(I2CWRITEDELAYUS);
+	
+	return Wire.receive();
+}
+
+void dirI2CMux0(int address, boolean input)
+{
+	// Switch to mode true -> in / false -> out
+	Wire.beginTransmission(address);
+	Wire.send(I2CRTC+0x06);
+	Wire.send((input)?0xFF:0x00);
+	Wire.endTransmission();
+}
+
+void writeI2CMux0(int address, byte data)
+{
+	// Write
+	Wire.beginTransmission(address);
+	Wire.send(I2CRTC);
+	Wire.send(data);
+	Wire.endTransmission();
+}
+
+void writeI2CData(int address, byte block, byte data)
+{
+	// Write
+	Wire.beginTransmission(address);
+	Wire.send(block);
+	Wire.send(data);
+	Wire.endTransmission();
+}
+
+static char* downame[] = {"Po", "Ut", "St", "Ct", "Pa", "So", "Ne"};
+
+// mode 0 - normal
+// mode 1 - force refresh
+// mode 2 - 1 + onelined
+// mode 3 - 1 + month, year and century
+void writeTime(LiquidCrystal &lcd, int address, uint8_t col, uint8_t row, uint8_t mode)
+{
+	static byte hour = 0xff;
+	static byte minute = 0xff;
+	static byte sec = 0xff;
+	static byte day = 0xff;
+	static byte month = 0xff;
+	static byte year = 0xff;
+	static byte century = 0xff;
+	static byte oldlow = 0xff;
+	static byte dow = 0xff;
+	byte val;
+	
+	byte* vars[] = {&sec, &minute, &hour, &dow, &day, &month, &year, &century};
+	int addrs[] = {0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF, 0x8};
+	byte i;
+	
+	dirI2CMux0(address, true);
+	digitalWrite(OE, 0);
+	digitalWrite(WE, 1);
+	
+	for(i=0; i<8; i++){
+		setAddr(addrs[i]);
+		delayMicroseconds(I2CREADDELAYUS);
+		val = readI2CMux(address);
+		if(*(vars[i]) == val) break;
+		else *(vars[i]) = val;
+	}
+	
+	sec = sec & 0x7F;
+	century = century & 0x3F;
+	dow = dow & 0x7;
+	
+	if(!mode && oldlow==minute){
+		return;
+	} 
+	oldlow = minute;
+	
+	
+	lcd.setCursor(col, row);
+	lcd << downame[dow-1] << _HEX(day);
+
+        if(mode==3){
+            lcd.setCursor(col+9, row);
+            if(month<0x10) lcd << " ";
+            lcd << _HEX(month) << " " << _HEX(century);
+            if(year<0x10) lcd << "0";
+            lcd << _HEX(year);
+        }
+
+	
+	lcd.setCursor(col+5,row+((mode==2)?0:1));
+	if(hour<0x10) lcd << " ";
+	lcd << _HEX(hour) << ":";
+	if(minute<0x10) lcd << "0";
+	lcd << _HEX(minute);
+}
+
+void writeTemp(LiquidCrystal &lcd, uint8_t col, uint8_t row)
+{
+	uint16_t temp = 0;
+	uint16_t vcc;
+	uint16_t vcccoef;
+	uint8_t i;
+	
+	// calibrate sensor
+	vcc = analogRead(A0); //23.5.2 of the manual, discard first reading
+	vcc = analogRead(A0); //read internal hard 1.1V
+	//should be 225 on stabilized 5V Aref
+	vcccoef = map(vcc, 0, 1024, 0, 500);
+	
+	// discard one reading
+	analogRead(TEMPERATURE);
+	
+	// average 4 readings
+	//for(i=0; i<4; i++)
+	temp = analogRead(TEMPERATURE);
+	//temp = temp >> 2;
+	temp = map(temp, 0, 1024, 0, 500);
+	temp = temp - 273; //2982mV = 25C, 1C = 10mV
+	lcd.setCursor(col+2,row);
+	if(temp<10) lcd << ' ';
+	lcd << temp << 'C';
+	lcd.setCursor(col,row+1);
+	lcd << "     ";
+	lcd.setCursor(col,row+1);
+	lcd << _DEC(vcccoef/100) << "." << ((vcccoef%100 > 10)?"":"0") << _DEC(vcccoef % 100) << "V";
+}
+
+void loop()
+{
+	int hour = 0;
+	int command = 0;
+	int data1 = 0;
+	int data2 = 0;
+	
+	if (Serial.available() > 0) {
+		command = Serial.read();
+		while (Serial.available() <= 0) delay(2);
+		data1 = readHex(Serial.read());
+		
+		//Read byte from RAM
+		if(command=='r'){
+			setAddr(data1);
+			digitalWrite(OE, 0);
+			digitalWrite(WE, 1); 
+			//hour = readFull(D0, D1, D2, D3, D4, D5, D6, D7);
+			//hour = readBCD(hour);
+			hour = readI2CMux(I2CDATA);
+			Serial.print(0x1FFF0+data1, HEX);
+			Serial.print(" ");
+			Serial.println(hour, HEX);
+		}
+		
+		//Set RTC registers write mode 0/1
+		if(command=='W'){
+			setAddr(0x8);
+			digitalWrite(OE, 0);
+			digitalWrite(WE, 1);
+			hour = readI2CMux(I2CDATA);
+			//hour = readFull(D0, D1, D2, D3, D4, D5, D6, D7);
+			digitalWrite(OE, 1);
+			delay(5);
+			if(data1)
+				writeI2CMux0(I2CDATA, hour | 0x80);
+			//writeFull(hour | 0x80, D0, D1, D2, D3, D4, D5, D6, D7);
+			else
+				writeI2CMux0(I2CDATA, hour & 0x7F);
+			//writeFull(hour & 0x7F, D0, D1, D2, D3, D4, D5, D6, D7);
+			delay(30);
+			dirI2CMux0(I2CDATA, false);
+			digitalWrite(WE, 0);
+			digitalWrite(WE, 1);
+			digitalWrite(OE, 0);
+			dirI2CMux0(I2CDATA, true);
+			delay(30);
+		}
+		
+		//Write byte to RAM
+		if(command=='w'){
+			while (Serial.available() <= 0) delayMicroseconds(2);
+			data2 = readHex(Serial.read()) << 4;
+			while (Serial.available() <= 0) delayMicroseconds(2);
+			data2 += readHex(Serial.read());
+			
+			digitalWrite(OE, 1);
+			digitalWrite(WE, 1);
+			setAddr(data1);
+			delay(30);
+			
+			writeI2CMux0(I2CDATA, data2);
+			delay(5);
+			dirI2CMux0(I2CDATA, false);
+			//writeFull(data2, D0, D1, D2, D3, D4, D5, D6, D7);
+			delay(30);
+			
+			digitalWrite(WE, 0);
+			delay(30);  
+			digitalWrite(WE, 1);
+			delay(30);
+			dirI2CMux0(I2CDATA, true);
+			delay(30);
+			digitalWrite(OE, 0);
+			delay(30);
+			
+			Serial.print(0x1FFF0+data1, HEX);
+			Serial.print(" ");
+			Serial.print(data2, HEX);
+			Serial.println(" w");
+		}
+		
+		if(command=='t'){ 
+                    writeTime(lcd, I2CDATA, 0, 0, 1);
+		}
+		
+		if(command=='x'){
+			lcd.begin();
+			lcd.clear();
+			lcd.print("LCD--I2C");
+			lcd.setCursor(0,1);
+			lcd.print("XX:XX");
+		}
+		
+		if(command=='C'){
+			int temp = analogRead(TEMPERATURE);
+			temp = map(temp, 0, 1024, 0, 500);
+			lcd.setCursor(0,2);
+			lcd.print(temp, DEC);
+		}
+		
+		if(command=='l'){
+			while (Serial.available() <= 0) delayMicroseconds(2);
+			data1 = data1 << 4;
+			data1 += readHex(Serial.read());
+			if(data1==0) digitalWrite(LCDLIGHT, LOW);
+			else if(data1==0xFF) digitalWrite(LCDLIGHT, HIGH);
+			else analogWrite(LCDLIGHT, data1);
+		}
+	} 
+	
+	//lcd.setCursor(5,0);
+	//lcd << _HEX(millis() & 0xfff);
+        digitalWrite(13, millis() & 0x100);
+	
+	// process queue
+	while(!queue.isEmpty()){
+		int event;
+		int data;
+
+                queue.dequeueEvent(&event, &data);
+
+                if(event==EV_REFRESH){
+                    digitalWrite(STATUSLED, HIGH);
+                    fsm.getCurrentState().refresh(data);
+                    digitalWrite(STATUSLED, LOW);
+                }
+
+                fsm.getCurrentState().event(event, data);
+	}
+
+        fsm.update();
+}
+
+int main(void)
+{
+	init();
+
+	setup();
+    
+	for (;;)
+		loop();
+        
+	return 0;
+}
+
+extern "C" void __cxa_pure_virtual()
+{
+	cli();
+	for (;;);
+}
