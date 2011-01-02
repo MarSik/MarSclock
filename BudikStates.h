@@ -4,6 +4,7 @@
 #include "WProgram.h"
 #include "BudikEvents.h"
 #include "BudikInterfaces.h"
+#include "utils.h"
 #include "config.h"
 
 class BudikState: public State {
@@ -239,6 +240,79 @@ public:
     {
         out.setBacklight(backlight);
         out.print(0, 0, data);
+    }
+
+};
+
+
+class SensorState : public BudikState {
+protected:
+    void (*func)();
+    BudikTickerInterface &out;
+    uint8_t sensor[5];
+    uint8_t code[5];
+    uint8_t value[5];
+    int first;
+    int last;
+
+public:
+ SensorState(BudikTickerInterface &out, void (*func)()):
+    BudikState(), func(func), out(out), first(0), last(0)
+    {
+    };
+
+    virtual void event(int event, int data)
+    {
+        switch(event){
+        case EV_SELECT:
+            if(data) (*func)();
+            break;
+        }
+
+        BudikState::event(event, data);
+    };
+
+    virtual void enter()
+    {
+        out.setup(0, 0);
+    }
+
+    virtual void refresh(int data)
+    {
+        String str;
+        int i = last;
+        int c = 0;
+        
+        while(i!=first){
+            i--;
+            if(i<0) i=4;
+            str += String(sensor[i], HEX);
+            str += String(code[i], HEX);
+            str += String(value[i], HEX);
+            str += " ";
+            c++;
+            if(c==2){
+                out.setLine1(str);
+                str = "";
+            }
+        }
+
+        out.setLine2(str);
+        out.print(0, 0, data);
+    }
+
+    virtual void addData(uint8_t sens0, uint8_t code0, uint8_t val0)
+    {
+        sensor[last] = sens0;
+        code[last] = code0;
+        value[last] = val0;
+
+        last++;
+        if(last==5) last=0;
+        if(last==first){
+            first++;
+            if(first==5) first=0;
+        }
     }
 
 };

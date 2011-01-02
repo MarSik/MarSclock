@@ -127,6 +127,53 @@ class BudikSetTimeInterface: public BudikTimeInterface
 
 uint8_t BudikSetTimeInterface::nibbles[] = {0, 2, 5, 8, 10, 12, 14};
 
+class BudikTickerInterface: public BudikTimeInterface
+{
+ public:
+ BudikTickerInterface(LiquidCrystal &out):
+    BudikTimeInterface(out)
+    {
+        line1[0] = 0;
+        line2[0] = 0;
+    }
+
+    virtual void print(uint8_t col, uint8_t row, int data)
+    {
+        BudikTimeInterface::print(col, row, 3);
+        clearRow(col, row+2);
+        lcd.setCursor(col, row+2);
+        lcd << line1;
+
+        clearRow(col, row+3);
+        lcd.setCursor(col, row+3);
+        lcd << line2;
+
+    }
+
+    virtual void setup(uint8_t col, uint8_t row)
+    {
+        BudikTimeInterface::setup(col, row);
+        clearRow(col, row+2);
+        clearRow(col, row+3);
+    }
+
+    void setLine1(String &s)
+    {
+        s.toCharArray(line1, 17);
+        line1[16] = 0;
+    }
+
+    void setLine2(String &s)
+    {
+        s.toCharArray(line2, 17);
+        line2[16] = 0;
+    }
+
+ protected:
+    char line1[17];
+    char line2[17];
+};
+
 class BudikBasicInterface: public BudikTimeInterface, BudikTempInterface
 {
  public:

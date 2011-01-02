@@ -3,6 +3,6 @@
 
 int readHex(int c);
 int readBCD(int BCD);
-
+int writeHex(int c);
 
 #endif

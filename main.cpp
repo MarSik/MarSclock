@@ -22,6 +22,7 @@ BudikBasicInterface intf_time(lcd);
 BudikMenuInterface intf_menu(lcd);
 BudikBacklightInterface intf_backlight(lcd);
 BudikSetTimeInterface intf_settime(lcd);
+BudikTickerInterface intf_sensors(lcd);
 
 // FSM transition prototypes
 void ste_tomainmenu();
@@ -35,6 +36,7 @@ SetTimeState st_settime(intf_settime, ste_totime);
 MenuState<5> st_mainmenu(intf_menu, "");
 MenuState<2> st_submenu(intf_menu, "Sub menu");
 BacklightState st_backlight(intf_backlight, 4, ste_tomainmenu);
+SensorState st_sensors(intf_sensors, ste_tomainmenu);
 
 // FSM engine
 FiniteStateMachine fsm(st_time);
@@ -45,12 +47,9 @@ void ste_tosettime() {fsm.transitionTo(st_settime);}
 void ste_tomainmenu() {fsm.transitionTo(st_mainmenu);}
 void ste_tosubmenu() {fsm.transitionTo(st_submenu);}
 void ste_tobacklight() {fsm.transitionTo(st_backlight);}
+void ste_tosensors() {fsm.transitionTo(st_sensors);}
 
 // rotary selector
-#define ROTX 9
-#define ROTA 12
-#define ROTB 3
-#define INTROT ROTB-2
 uint8_t rotPos = 4;
 
 // RTC Addresses
@@ -152,16 +151,29 @@ void setup() {
 	delay(200);
 	lcd.begin();
 	lcd.clear();
-	
+        analogWrite(11, 128); // initialize backlight and it's PWM driver
+
+        //Init buzzer - we use Timer2 for Backlight control, but this won´t hurt it 
+        TCCR2B = TCCR2B & 0xf8 | 0b100; // Set Timer2 overflow freq to ~488Hz
+        TCCR2A &= ~(_BV(COM2B1) | _BV(COM2B0)); // Disconnect Timer2B to disable interrupts on INT1 port
+        TIMSK2 |= _BV(TOIE2); // Enable Timer2 overflow INT which will flip the buzzer -> 244Hz B3 sound
+        pinMode(A3, OUTPUT);
+
 	// Init 555 interrupt
 	pinMode(TIMER, INPUT);
 	attachInterrupt(INT555, wakeupTimer, FALLING);
+
+        // Init wireless
+        vw_set_tx_pin(5);
+        vw_set_rx_pin(6);
+        vw_setup(2000);
+        vw_rx_start();
 	
         // Init states
         st_mainmenu.addMenuItem(0, "Podsviceni", ste_tobacklight);
         st_mainmenu.addMenuItem(1, "Casovac", ste_tosubmenu);
         st_mainmenu.addMenuItem(2, "Akce", ste_tosubmenu);
-        st_mainmenu.addMenuItem(3, "Senzory", ste_tosubmenu);
+        st_mainmenu.addMenuItem(3, "Senzory", ste_tosensors);
         st_mainmenu.addMenuItem(4, "Zpet", ste_totime);
 
         st_submenu.addMenuItem(0, "Zpet do menu", ste_tomainmenu);
@@ -185,6 +197,12 @@ void setup() {
         queue.enqueueEvent(EV_REFRESH, 0);
 
 	Serial.println("Setup done");
+}
+
+// Timer2 Overflow
+ISR(TIMER2_OVF_vect)
+{
+    PINC |= _BV(BUZZER - A0); //toggle pin A3
 }
 
 // Pin Change vector 0 (Port B)
@@ -467,12 +485,27 @@ void loop()
 		}
 	} 
 	
-	//lcd.setCursor(5,0);
-	//lcd << _HEX(millis() & 0xfff);
-        digitalWrite(13, millis() & 0x100);
-	
+        if(vw_have_message()){
+            uint8_t msg[VW_MAX_MESSAGE_LEN];
+            uint8_t len = VW_MAX_MESSAGE_LEN;
+
+            
+            if(vw_get_message(msg, &len)){
+                int i;
+                Serial << "RF:";
+                for(i=0; i<len; i++) Serial << " " << _HEX(msg[i]);
+                Serial << endl;
+                st_sensors.addData(msg[0], msg[1], msg[2]);
+                queue.enqueueEvent(EV_REFRESH, 0);
+            }
+            else{
+                st_sensors.addData(0xfa, 0x11, 0xed);
+                queue.enqueueEvent(EV_REFRESH, 0);
+            }
+        }
+
 	// process queue
-	while(!queue.isEmpty()){
+	if(!queue.isEmpty()){
 		int event;
 		int data;
 

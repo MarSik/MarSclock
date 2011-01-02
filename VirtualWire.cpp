@@ -274,8 +274,8 @@ void vw_setup(uint16_t speed)
     // Set up digital IO pins
     pinMode(vw_tx_pin, OUTPUT);
     pinMode(vw_rx_pin, INPUT);
-    pinMode(vw_ptt_pin, OUTPUT);
-    digitalWrite(vw_ptt_pin, vw_ptt_inverted);
+    //pinMode(vw_ptt_pin, OUTPUT);
+    //digitalWrite(vw_ptt_pin, vw_ptt_inverted);
 }
 
 // Start the transmitter, call when the tx buffer is ready to go and vw_tx_len is
@@ -290,7 +290,7 @@ void vw_tx_start()
     vw_rx_enabled = false;
 
     // Enable the transmitter hardware
-    digitalWrite(vw_ptt_pin, true ^ vw_ptt_inverted);
+    //digitalWrite(vw_ptt_pin, true ^ vw_ptt_inverted);
 
     // Next tick interrupt will send the first bit
     vw_tx_enabled = true;
@@ -300,7 +300,7 @@ void vw_tx_start()
 void vw_tx_stop()
 {
     // Disable the transmitter hardware
-    digitalWrite(vw_ptt_pin, false ^ vw_ptt_inverted);
+    //digitalWrite(vw_ptt_pin, false ^ vw_ptt_inverted);
     digitalWrite(vw_tx_pin, false);
 
     // No more ticks for the transmitter

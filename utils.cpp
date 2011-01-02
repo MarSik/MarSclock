@@ -1,3 +1,9 @@
+int writeHex(int c)
+{
+    if(c<10) return '0'+c;
+    else return 'A'+(c-10);
+}
+
 int readHex(int c)
 {
 	switch(c) {
