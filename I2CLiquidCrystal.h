@@ -16,6 +16,8 @@ public:
   void init();
   void home();
   void setCursor(int, int); 
+  void enableCursor(bool, bool);
+
   /*
   void shiftDisplayLeft();
   void shiftDisplayRight();

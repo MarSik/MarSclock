@@ -147,15 +147,22 @@ void LiquidCrystal::home()
   delayMicroseconds(2000);
 }
 
+void LiquidCrystal::enableCursor(bool enable, bool blink)
+{
+  command(0x0C+((enable)?2:0)+((blink)?1:0));  // enable cursor and blinking
+  delayMicroseconds(39);
+}
+
+
 void LiquidCrystal::setCursor(int col, int row)
 {
   int row_offsets[] = { 0x00, 0x40, 0x10, 0x50 };
   command(0x80 | (col + row_offsets[row]));
+  delayMicroseconds(39);
 }
 
 void LiquidCrystal::command(uint8_t value) {
   send(value, LOW);
-  delayMicroseconds(50);
 }
 
 void LiquidCrystal::write(uint8_t value) {
