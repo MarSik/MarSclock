@@ -137,6 +137,73 @@ public:
 
 };
 
+class AlarmsState : public BudikState {
+protected:
+    void (*funcHold)();
+    BudikSetAlarmInterface &out;
+    uint8_t nibble;
+    bool set;
+
+public:
+ AlarmsState(BudikSetAlarmInterface &out,
+           void (*funcHold)()):
+    BudikState(), funcHold(funcHold), out(out),
+        nibble(0), set(false)
+    {
+    };
+
+    virtual void event(int event, int data)
+    {
+        switch(event){
+        case EV_LEFT:
+            // select number on the left
+            if(!set && nibble){
+                nibble--;
+                queue.enqueueEvent(EV_REFRESH, 0);
+            }
+            break;
+
+        case EV_RIGHT:
+            // select number on the right
+            if(!set && nibble<6){
+                nibble++;
+                queue.enqueueEvent(EV_REFRESH, 0);
+            }
+            break;
+
+        case EV_SELECT:
+            // select number vs. set number
+            if(data){
+                set = !set;
+                queue.enqueueEvent(EV_REFRESH, 0);
+            }
+            break;
+
+        case EV_HOLD:
+            if(data) (*funcHold)();
+            break;
+        }
+
+        BudikState::event(event, data);
+    };
+
+    virtual void update()
+    {
+    }
+
+    virtual void enter()
+    {
+        out.setup(0, 0);
+    }
+
+    virtual void refresh(int data)
+    {
+        out.setMode(set);
+        out.setNibble(nibble);
+        out.print(0, 0, data);
+    }
+
+};
 
 template<int NoOfItems>
 class MenuState : public BudikState {

@@ -7,7 +7,6 @@
 void writeTime(LiquidCrystal &out, int address, uint8_t col, uint8_t row, uint8_t mode);
 void writeTemp(LiquidCrystal &out, uint8_t col, uint8_t row);
 
-
 class BudikInterface
 {
  public:
@@ -28,6 +27,7 @@ class BudikInterface
     virtual void setup(uint8_t col, uint8_t row)
     {
         lcd.clear();
+        lcd.enableCursor(false, false);
         queue.enqueueEvent(EV_REFRESH, 1);
     }
 
@@ -97,8 +97,9 @@ class BudikSetTimeInterface: public BudikTimeInterface
     {
         BudikTimeInterface::print(col, row, 3);
         clearRow(col, row+2);
-        lcd.setCursor(col+nibbles[nibble], row+2);
-        lcd << ((set_mode) ? "=": "^");
+        lcd.setCursor(col+nibbles[nibble], row+nibblerow[nibble]);
+        lcd.enableCursor(true, set_mode);
+        //lcd << ((set_mode) ? "=": "^");
     }
 
     virtual void setup(uint8_t col, uint8_t row)
@@ -123,9 +124,56 @@ class BudikSetTimeInterface: public BudikTimeInterface
     bool set_mode;
     uint8_t nibble;
     static uint8_t nibbles[];
+    static uint8_t nibblerow[];
 };
 
-uint8_t BudikSetTimeInterface::nibbles[] = {0, 2, 5, 8, 10, 12, 14};
+uint8_t BudikSetTimeInterface::nibbles[] = {0, 2, 5, 8, 8, 12, 14};
+uint8_t BudikSetTimeInterface::nibblerow[] = {0, 0, 1, 1, 0, 0, 0};
+
+class BudikSetAlarmInterface: public BudikTimeInterface
+{
+ public:
+ BudikSetAlarmInterface(LiquidCrystal &out):
+    BudikTimeInterface(out), set_mode(false), nibble(0)
+    {}
+
+    virtual void print(uint8_t col, uint8_t row, int data)
+    {
+        BudikTimeInterface::print(col, row, 2);
+        clearRow(col, row+2);
+        lcd.setCursor(col+nibbles[nibble], row+nibblerow[nibble]);
+        lcd.enableCursor(true, set_mode);
+        //lcd << ((set_mode) ? "=": "^");
+    }
+
+    virtual void setup(uint8_t col, uint8_t row)
+    {
+        BudikTimeInterface::setup(col, row);
+        clearRow(col, row+2);
+        lcd.setCursor(col, row+3);
+        lcd << "  Nastavit cas";
+    }
+
+    void setMode(bool mode)
+    {
+        set_mode = mode;
+    }
+
+    void setNibble(uint8_t n)
+    {
+        nibble = n;
+    }
+
+ protected:
+    bool set_mode;
+    uint8_t nibble;
+    static uint8_t nibbles[];
+    static uint8_t nibblerow[];
+};
+
+uint8_t BudikSetAlarmInterface::nibbles[] = {0, 2, 5, 8, 8, 12, 14};
+uint8_t BudikSetAlarmInterface::nibblerow[] = {0, 0, 1, 1, 0, 0, 0};
+
 
 class BudikTickerInterface: public BudikTimeInterface
 {

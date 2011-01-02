@@ -22,6 +22,7 @@ BudikBasicInterface intf_time(lcd);
 BudikMenuInterface intf_menu(lcd);
 BudikBacklightInterface intf_backlight(lcd);
 BudikSetTimeInterface intf_settime(lcd);
+BudikSetAlarmInterface intf_setalarm(lcd);
 BudikTickerInterface intf_sensors(lcd);
 
 // FSM transition prototypes
@@ -33,6 +34,7 @@ void ste_tobacklight();
 // FSM states
 TimeState st_time(intf_time, ste_tomainmenu, ste_tosettime);
 SetTimeState st_settime(intf_settime, ste_totime);
+AlarmsState st_alarms(intf_setalarm, ste_totime);
 MenuState<5> st_mainmenu(intf_menu, "");
 MenuState<2> st_submenu(intf_menu, "Sub menu");
 BacklightState st_backlight(intf_backlight, 4, ste_tomainmenu);
@@ -44,6 +46,7 @@ FiniteStateMachine fsm(st_time);
 // FSM transitions
 void ste_totime() {fsm.transitionTo(st_time);}
 void ste_tosettime() {fsm.transitionTo(st_settime);}
+void ste_toalarms() {fsm.transitionTo(st_alarms);}
 void ste_tomainmenu() {fsm.transitionTo(st_mainmenu);}
 void ste_tosubmenu() {fsm.transitionTo(st_submenu);}
 void ste_tobacklight() {fsm.transitionTo(st_backlight);}
@@ -151,6 +154,7 @@ void setup() {
 	delay(200);
 	lcd.begin();
 	lcd.clear();
+        lcd.enableCursor(false, false);
         analogWrite(11, 128); // initialize backlight and it's PWM driver
 
         //Init buzzer - we use Timer2 for Backlight control, but this won´t hurt it 
@@ -171,7 +175,7 @@ void setup() {
 	
         // Init states
         st_mainmenu.addMenuItem(0, "Podsviceni", ste_tobacklight);
-        st_mainmenu.addMenuItem(1, "Casovac", ste_tosubmenu);
+        st_mainmenu.addMenuItem(1, "Casovac", ste_toalarms);
         st_mainmenu.addMenuItem(2, "Akce", ste_tosubmenu);
         st_mainmenu.addMenuItem(3, "Senzory", ste_tosensors);
         st_mainmenu.addMenuItem(4, "Zpet", ste_totime);
@@ -280,6 +284,7 @@ void writeI2CData(int address, byte block, byte data)
 }
 
 static char* downame[] = {"Po", "Ut", "St", "Ct", "Pa", "So", "Ne"};
+static char* monthname[] = {"Led", "Uno", "Bre", "Dub", "Kve", "Cer", "Cec", "Srp", "Zar", "Rij", "Lis", "Pro"};
 
 // mode 0 - normal
 // mode 1 - force refresh
@@ -325,12 +330,11 @@ void writeTime(LiquidCrystal &lcd, int address, uint8_t col, uint8_t row, uint8_
 	
 	
 	lcd.setCursor(col, row);
-	lcd << downame[dow-1] << _HEX(day);
+	lcd << downame[dow-1] << ((day<0x10) ? "0" : "") << _HEX(day);
 
         if(mode==3){
-            lcd.setCursor(col+9, row);
-            if(month<0x10) lcd << " ";
-            lcd << _HEX(month) << " " << _HEX(century);
+            lcd.setCursor(col+8, row);
+            lcd << monthname[readBCD(month)-1] << " " << _HEX(century);
             if(year<0x10) lcd << "0";
             lcd << _HEX(year);
         }
