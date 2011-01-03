@@ -13,6 +13,7 @@
 #include "BudikInterfaces.h"
 #include "utils.h"
 #include "config.h"
+#include "BudikRTC.h"
 
 // I2C hooked LCD
 I2CLiquidCrystal lcd(I2CDATA, I2CLCD, 6, 5, 4, 0, 1, 2, 3);
@@ -70,18 +71,6 @@ int CENTURY = 0x8;
 #define DEBOUNCETIME 20
 #define HOLDTIME 3000
 long debouncems = 0;
-
-void writeI2CData(int address, byte block, byte data);
-
-void setAddr(int val)
-{
-	int i;
-	
-	writeI2CData(I2CADDR, 0x0, 0xF0+val);
-	writeI2CData(I2CADDR, 0x1, 0xFF);
-	
-	delay(30);
-}
 
 
 void wakeupTimer(void)
@@ -233,119 +222,6 @@ ISR(PCINT0_vect){
         oldstate = (PINB & 0x02);
 }
 
-int readI2CMux(int address)
-{
-	int GP0 = 0;
-	int GP1 = 0;
-	
-	digitalWrite(WE, 1);
-	digitalWrite(OE, 0);
-	
-	delayMicroseconds(I2CREADDELAYUS); // standard delay of the I2C chip
-	
-	// query
-	Wire.beginTransmission(address);
-	Wire.send(I2CRTC);
-	Wire.endTransmission();
-	
-	// reply
-	Wire.requestFrom(address, 1);
-	
-	delayMicroseconds(I2CWRITEDELAYUS);
-	
-	return Wire.receive();
-}
-
-void dirI2CMux0(int address, boolean input)
-{
-	// Switch to mode true -> in / false -> out
-	Wire.beginTransmission(address);
-	Wire.send(I2CRTC+0x06);
-	Wire.send((input)?0xFF:0x00);
-	Wire.endTransmission();
-}
-
-void writeI2CMux0(int address, byte data)
-{
-	// Write
-	Wire.beginTransmission(address);
-	Wire.send(I2CRTC);
-	Wire.send(data);
-	Wire.endTransmission();
-}
-
-void writeI2CData(int address, byte block, byte data)
-{
-	// Write
-	Wire.beginTransmission(address);
-	Wire.send(block);
-	Wire.send(data);
-	Wire.endTransmission();
-}
-
-static char* downame[] = {"Po", "Ut", "St", "Ct", "Pa", "So", "Ne"};
-static char* monthname[] = {"Led", "Uno", "Bre", "Dub", "Kve", "Cer", "Cec", "Srp", "Zar", "Rij", "Lis", "Pro"};
-
-// mode 0 - normal
-// mode 1 - force refresh
-// mode 2 - 1 + onelined
-// mode 3 - 1 + month, year and century
-void writeTime(LiquidCrystal &lcd, int address, uint8_t col, uint8_t row, uint8_t mode)
-{
-	static byte hour = 0xff;
-	static byte minute = 0xff;
-	static byte sec = 0xff;
-	static byte day = 0xff;
-	static byte month = 0xff;
-	static byte year = 0xff;
-	static byte century = 0xff;
-	static byte oldlow = 0xff;
-	static byte dow = 0xff;
-	byte val;
-	
-	byte* vars[] = {&sec, &minute, &hour, &dow, &day, &month, &year, &century};
-	int addrs[] = {0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF, 0x8};
-	byte i;
-	
-	dirI2CMux0(address, true);
-	digitalWrite(OE, 0);
-	digitalWrite(WE, 1);
-	
-	for(i=0; i<8; i++){
-		setAddr(addrs[i]);
-		delayMicroseconds(I2CREADDELAYUS);
-		val = readI2CMux(address);
-		if(*(vars[i]) == val) break;
-		else *(vars[i]) = val;
-	}
-	
-	sec = sec & 0x7F;
-	century = century & 0x3F;
-	dow = dow & 0x7;
-	
-	if(!mode && oldlow==minute){
-		return;
-	} 
-	oldlow = minute;
-	
-	
-	lcd.setCursor(col, row);
-	lcd << downame[dow-1] << ((day<0x10) ? "0" : "") << _HEX(day);
-
-        if(mode==3){
-            lcd.setCursor(col+8, row);
-            lcd << monthname[readBCD(month)-1] << " " << _HEX(century);
-            if(year<0x10) lcd << "0";
-            lcd << _HEX(year);
-        }
-
-	
-	lcd.setCursor(col+5,row+((mode==2)?0:1));
-	if(hour<0x10) lcd << " ";
-	lcd << _HEX(hour) << ":";
-	if(minute<0x10) lcd << "0";
-	lcd << _HEX(minute);
-}
 
 void writeTemp(LiquidCrystal &lcd, uint8_t col, uint8_t row)
 {
@@ -397,7 +273,7 @@ void loop()
 			digitalWrite(WE, 1); 
 			//hour = readFull(D0, D1, D2, D3, D4, D5, D6, D7);
 			//hour = readBCD(hour);
-			hour = readI2CMux(I2CDATA);
+			hour = readI2CMux();
 			Serial.print(0x1FFF0+data1, HEX);
 			Serial.print(" ");
 			Serial.println(hour, HEX);
@@ -408,22 +284,22 @@ void loop()
 			setAddr(0x8);
 			digitalWrite(OE, 0);
 			digitalWrite(WE, 1);
-			hour = readI2CMux(I2CDATA);
+			hour = readI2CMux();
 			//hour = readFull(D0, D1, D2, D3, D4, D5, D6, D7);
 			digitalWrite(OE, 1);
 			delay(5);
 			if(data1)
-				writeI2CMux0(I2CDATA, hour | 0x80);
+				writeI2CMux0(hour | 0x80);
 			//writeFull(hour | 0x80, D0, D1, D2, D3, D4, D5, D6, D7);
 			else
-				writeI2CMux0(I2CDATA, hour & 0x7F);
+				writeI2CMux0(hour & 0x7F);
 			//writeFull(hour & 0x7F, D0, D1, D2, D3, D4, D5, D6, D7);
 			delay(30);
-			dirI2CMux0(I2CDATA, false);
+			dirI2CMux0(false);
 			digitalWrite(WE, 0);
 			digitalWrite(WE, 1);
 			digitalWrite(OE, 0);
-			dirI2CMux0(I2CDATA, true);
+			dirI2CMux0(true);
 			delay(30);
 		}
 		
@@ -439,9 +315,9 @@ void loop()
 			setAddr(data1);
 			delay(30);
 			
-			writeI2CMux0(I2CDATA, data2);
+			writeI2CMux0(data2);
 			delay(5);
-			dirI2CMux0(I2CDATA, false);
+			dirI2CMux0(false);
 			//writeFull(data2, D0, D1, D2, D3, D4, D5, D6, D7);
 			delay(30);
 			
@@ -449,7 +325,7 @@ void loop()
 			delay(30);  
 			digitalWrite(WE, 1);
 			delay(30);
-			dirI2CMux0(I2CDATA, true);
+			dirI2CMux0(true);
 			delay(30);
 			digitalWrite(OE, 0);
 			delay(30);
@@ -458,10 +334,6 @@ void loop()
 			Serial.print(" ");
 			Serial.print(data2, HEX);
 			Serial.println(" w");
-		}
-		
-		if(command=='t'){ 
-                    writeTime(lcd, I2CDATA, 0, 0, 1);
 		}
 		
 		if(command=='x'){

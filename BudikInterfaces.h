@@ -3,9 +3,15 @@
 
 #include "I2CLiquidCrystal.h"
 #include "config.h"
+#include "utils.h"
+#include "FiniteStateMachine.h"
+#include "Streaming.h"
 
 void writeTime(LiquidCrystal &out, int address, uint8_t col, uint8_t row, uint8_t mode);
 void writeTemp(LiquidCrystal &out, uint8_t col, uint8_t row);
+
+extern char* downame[];
+extern char* monthname[];
 
 class BudikInterface
 {
@@ -28,7 +34,6 @@ class BudikInterface
     {
         lcd.clear();
         lcd.enableCursor(false, false);
-        queue.enqueueEvent(EV_REFRESH, 1);
     }
 
     virtual void cleanup()
@@ -66,6 +71,17 @@ class BudikTempInterface: public BudikInterface
     }
 };
 
+typedef struct _TimeValue {
+    uint8_t second;
+    uint8_t minute;
+    uint8_t hour;
+    uint8_t dow;
+    uint8_t day;
+    uint8_t month;
+    uint8_t year;
+    uint8_t century;
+} TimeValue;
+
 class BudikTimeInterface: public BudikInterface
 {
  public:
@@ -73,10 +89,26 @@ class BudikTimeInterface: public BudikInterface
     BudikInterface(out)
     {}
 
-    virtual void print(uint8_t col, uint8_t row, int data)
+    virtual void print(uint8_t col, uint8_t row, int mode)
     {
-        BudikInterface::print(col, row, data);
-        writeTime(lcd, I2CDATA, col, row, data);
+        BudikInterface::print(col, row, mode);
+
+	lcd.setCursor(col, row);
+	lcd << downame[time.dow-1] << ((time.day<0x10) ? "0" : "") << _HEX(time.day);
+
+        if(mode==3){
+            lcd.setCursor(col+8, row);
+            lcd << monthname[readBCD(time.month)-1] << " " << _HEX(time.century);
+            if(time.year<0x10) lcd << "0";
+            lcd << _HEX(time.year);
+        }
+
+	
+	lcd.setCursor(col+5,row+((mode==2)?0:1));
+	if(time.hour<0x10) lcd << " ";
+	lcd << _HEX(time.hour) << ":";
+	if(time.minute<0x10) lcd << "0";
+	lcd << _HEX(time.minute);
     }
 
     virtual void setup(uint8_t col, uint8_t row)
@@ -84,6 +116,14 @@ class BudikTimeInterface: public BudikInterface
         BudikInterface::setup(col, row);
     }
 
+    virtual inline void setTime(TimeValue t)
+    {
+        time = t;
+    }
+
+
+ protected:
+    TimeValue time;
 };
 
 class BudikSetTimeInterface: public BudikTimeInterface
@@ -110,12 +150,12 @@ class BudikSetTimeInterface: public BudikTimeInterface
         lcd << "  Nastavit cas";
     }
 
-    void setMode(bool mode)
+    virtual void setMode(bool mode)
     {
         set_mode = mode;
     }
 
-    void setNibble(uint8_t n)
+    virtual void setNibble(uint8_t n)
     {
         nibble = n;
     }
@@ -127,8 +167,12 @@ class BudikSetTimeInterface: public BudikTimeInterface
     static uint8_t nibblerow[];
 };
 
-uint8_t BudikSetTimeInterface::nibbles[] = {0, 2, 5, 8, 8, 12, 14};
-uint8_t BudikSetTimeInterface::nibblerow[] = {0, 0, 1, 1, 0, 0, 0};
+typedef struct _AlarmValue {
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t dow_en; //MSB> Su Sa Fr Th We Tu Mo EN <LSB
+    uint8_t flags;
+} AlarmValue;
 
 class BudikSetAlarmInterface: public BudikTimeInterface
 {
@@ -154,25 +198,28 @@ class BudikSetAlarmInterface: public BudikTimeInterface
         lcd << "  Nastavit cas";
     }
 
-    void setMode(bool mode)
+    virtual void setMode(bool mode)
     {
         set_mode = mode;
     }
 
-    void setNibble(uint8_t n)
+    virtual void setNibble(uint8_t n)
     {
         nibble = n;
     }
 
+    virtual void setAlarm(AlarmValue &a)
+    {
+        alarm = a;
+    }
+
  protected:
+    AlarmValue alarm;
     bool set_mode;
     uint8_t nibble;
     static uint8_t nibbles[];
     static uint8_t nibblerow[];
 };
-
-uint8_t BudikSetAlarmInterface::nibbles[] = {0, 2, 5, 8, 8, 12, 14};
-uint8_t BudikSetAlarmInterface::nibblerow[] = {0, 0, 1, 1, 0, 0, 0};
 
 
 class BudikTickerInterface: public BudikTimeInterface
@@ -205,13 +252,13 @@ class BudikTickerInterface: public BudikTimeInterface
         clearRow(col, row+3);
     }
 
-    void setLine1(String &s)
+    virtual void setLine1(String &s)
     {
         s.toCharArray(line1, 17);
         line1[16] = 0;
     }
 
-    void setLine2(String &s)
+    virtual void setLine2(String &s)
     {
         s.toCharArray(line2, 17);
         line2[16] = 0;
@@ -250,12 +297,12 @@ class BudikMenuInterface: public BudikTimeInterface
     BudikTimeInterface(out), title(""), item("")
     {}
 
-    void setTitle(const char *title0)
+    virtual void setTitle(const char *title0)
     {
         title = title0;
     }
 
-    void setItem(const char *item0)
+    virtual void setItem(const char *item0)
     {
         item = item0;
     }
@@ -291,7 +338,7 @@ class BudikBacklightInterface: public BudikTimeInterface
     BudikTimeInterface(out), backlight(0)
     {}
 
-    void setBacklight(uint8_t backlightlevel)
+    virtual void setBacklight(uint8_t backlightlevel)
     {
         backlight = backlightlevel;
     }

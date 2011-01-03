@@ -102,7 +102,7 @@ $(ARDUINO)/wiring_shift.c $(ARDUINO)/WInterrupts.c twi.c utils.c
 CXXSRC = main.cpp $(ARDUINO)/HardwareSerial.cpp $(ARDUINO)/WMath.cpp $(ARDUINO)/Print.cpp \
 $(ARDUINO)/WString.cpp $(ARDUINO)/Tone.cpp \
 EventDispatcher.cpp EventQueue.cpp FiniteStateMachine.cpp I2CLiquidCrystal.cpp VirtualWire.cpp \
-Wire.cpp
+Wire.cpp BudikRTC.cpp BudikInterfaces.cpp
 
 # This includes the rest of rules DO NOT DELETE
 -include Makefile.inc

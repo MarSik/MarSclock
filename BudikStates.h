@@ -6,6 +6,7 @@
 #include "BudikInterfaces.h"
 #include "utils.h"
 #include "config.h"
+#include "BudikRTC.h"
 
 class BudikState: public State {
  public:
@@ -60,10 +61,12 @@ public:
     virtual void enter()
     {
         out.setup(0, 0);
+        refresh(1);
     }
 
     virtual void refresh(int data)
     {
+        out.setTime(readTime(false));
         out.print(0, 0, data);
     }
 
@@ -126,10 +129,12 @@ public:
     virtual void enter()
     {
         out.setup(0, 0);
+        refresh(1);
     }
 
     virtual void refresh(int data)
     {
+        out.setTime(readTime(false));
         out.setMode(set);
         out.setNibble(nibble);
         out.print(0, 0, data);
@@ -194,10 +199,12 @@ public:
     virtual void enter()
     {
         out.setup(0, 0);
+        refresh(1);
     }
 
     virtual void refresh(int data)
     {
+        out.setTime(readTime(false));
         out.setMode(set);
         out.setNibble(nibble);
         out.print(0, 0, data);
@@ -243,6 +250,7 @@ public:
 
     virtual void refresh(int data)
     {
+        out.setTime(readTime(false));
         out.setItem(menuItems[selected].title);
         out.print(0,0, data);
     };
@@ -251,6 +259,7 @@ public:
     {
         out.setTitle(title);
         out.setup(0, 0);
+        refresh(1);
     }
 
     virtual void exit(void)
@@ -301,10 +310,12 @@ public:
     virtual void enter()
     {
         out.setup(0, 0);
+        refresh(1);
     }
 
     virtual void refresh(int data)
     {
+        out.setTime(readTime(false));
         out.setBacklight(backlight);
         out.print(0, 0, data);
     }
@@ -342,6 +353,7 @@ public:
     virtual void enter()
     {
         out.setup(0, 0);
+        refresh(1);
     }
 
     virtual void refresh(int data)
@@ -365,6 +377,7 @@ public:
         }
 
         out.setLine2(str);
+        out.setTime(readTime(false));
         out.print(0, 0, data);
     }
 
