@@ -172,6 +172,7 @@ class BudikSetTimeInterface: public BudikTimeInterface
 };
 
 typedef struct _AlarmValue {
+    uint8_t id:8;
     uint8_t hour:6;
     uint8_t minute:7;
     uint8_t dow:7;
@@ -188,8 +189,33 @@ class BudikSetAlarmInterface: public BudikTimeInterface
 
     virtual void print(uint8_t col, uint8_t row, int data)
     {
+        int i;
+
         BudikTimeInterface::print(col, row, 2);
-        clearRow(col, row+2);
+        lcd.setCursor(col, row+2);
+        lcd << "< "
+            << ((alarm->id<10)?"0":"")
+            << _DEC(alarm->id) << " > "
+            << ((alarm->hour<10)?"0":"") << _HEX(alarm->hour)
+            << ":"
+            << ((alarm->minute<10)?"0":"") << _HEX(alarm->minute);
+        clearRow(col+13, row+2);
+
+        lcd.setCursor(col, row+3);
+        lcd << "E PoUtStCtPaSoNe";
+
+        if(!alarm->en){
+            lcd.setCursor(col, row+3);
+            lcd << "0";
+        }
+
+        for(i=0; i<7; i++){
+            if((alarm->dow >> (6 - i)) & 0x1 == 0){
+                lcd.setCursor(col+3+2*i, row+3);
+                lcd << "_";
+            }
+        }
+
         lcd.setCursor(col+nibbles[nibble].column, row+nibbles[nibble].row);
         lcd.enableCursor(true, set_mode);
         //lcd << ((set_mode) ? "=": "^");
@@ -198,8 +224,8 @@ class BudikSetAlarmInterface: public BudikTimeInterface
     virtual void setup(uint8_t col, uint8_t row)
     {
         BudikTimeInterface::setup(col, row);
+        clearRow(col, row+1);
         clearRow(col, row+2);
-        lcd.setCursor(col, row+3);
     }
 
     virtual void setMode(bool mode)

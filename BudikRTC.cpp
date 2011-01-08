@@ -148,6 +148,7 @@ AlarmValue readAlarm(uint8_t alidx)
 
     dirI2CMux0(true);
     alidx &= ALARM_MASK;
+    v.id = alidx;
 
     // DOW + EN bits
     setAddr(ALARM_ADDR2, ALARM_ADDR1, ALARM_ADDR0 + ALARM_DOW + (alidx << ALARM_NEXT_SHIFT));

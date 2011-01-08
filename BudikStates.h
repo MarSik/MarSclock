@@ -260,6 +260,7 @@ protected:
     void (&funcHold)();
     BudikSetAlarmInterface &out;
     uint8_t nibble;
+    AlarmValue alarm;
     bool set;
 
 public:
@@ -268,10 +269,13 @@ public:
     BudikState(), funcHold(funcHold), out(out),
         nibble(0), set(false)
     {
+        alarm.id = 0;
     };
 
     virtual void event(int event, int data)
     {
+        uint8_t v;
+
         switch(event){
         case EV_LEFT:
             // select number on the left
@@ -279,20 +283,78 @@ public:
                 nibble--;
                 queue.enqueueEvent(EV_REFRESH, 0);
             }
+
+            if(!set) break;
+
+            switch(nibble){
+            case 0:
+                if(alarm.id){
+                    //writeAlarm(alarm.id, alarm);
+                    alarm.id--;
+                    alarm = readAlarm(alarm.id);
+                }
+                queue.enqueueEvent(EV_REFRESH, 0);
+                break;
+            case 1:
+                if(alarm.hour){
+                    v = decodeBCD(alarm.hour) - 1;
+                    alarm.hour = encodeBCD(v);
+                    queue.enqueueEvent(EV_REFRESH, 0);
+                }
+                break;
+            case 2:
+                if(alarm.minute){
+                    v = decodeBCD(alarm.minute) - 1;
+                    alarm.minute = encodeBCD(v);
+                    queue.enqueueEvent(EV_REFRESH, 0);
+                }
+                break;
+            }
+
             break;
 
         case EV_RIGHT:
             // select number on the right
-            if(!set && nibble<6){
+            if(!set && nibble<10){
                 nibble++;
                 queue.enqueueEvent(EV_REFRESH, 0);
             }
+
+            if(!set) break;
+
+            switch(nibble){
+            case 0:
+                if(alarm.id<63){
+                    //writeAlarm(alarm.id, alarm);
+                    alarm.id++;
+                    alarm = readAlarm(alarm.id);
+                }
+                queue.enqueueEvent(EV_REFRESH, 0);
+                break;
+            case 1:
+                if(alarm.hour<0x23){
+                    v = decodeBCD(alarm.hour) + 1;
+                    alarm.hour = encodeBCD(v);
+                    queue.enqueueEvent(EV_REFRESH, 0);
+                }
+                break;
+            case 2:
+                if(alarm.minute<0x59){
+                    v = decodeBCD(alarm.minute) + 1;
+                    alarm.minute = encodeBCD(v);
+                    queue.enqueueEvent(EV_REFRESH, 0);
+                }
+                break;
+            }
+
             break;
 
         case EV_SELECT:
             // select number vs. set number
             if(data){
-                set = !set;
+                if(nibble<=2) set = !set;
+                else if(nibble==3) alarm.en = !alarm.en;
+                else alarm.dow ^= (1 << (7 - (nibble - 4)));
                 queue.enqueueEvent(EV_REFRESH, 0);
             }
             break;
@@ -311,14 +373,21 @@ public:
 
     virtual void enter()
     {
+        alarm = readAlarm(alarm.id);
         out.setup(0, 0);
         refresh(1);
+    }
+
+    virtual void leave()
+    {
+        writeAlarm(alarm.id, alarm);
     }
 
     virtual void refresh(int data)
     {
         TimeValue tv = readTime(false);
         out.setTime(tv);
+        out.setAlarm(alarm);
         out.setMode(set);
         out.setNibble(nibble);
         out.print(0, 0, data);
