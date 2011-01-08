@@ -86,9 +86,6 @@ boolean EventQueue::enqueueEvent(int ev_code, int ev_param) {
 
 
 boolean EventQueue::dequeueEvent(int* ev_code, int* ev_param) {
-  int temp;
-  boolean isEmpty;
-  
   if (numEvents == 0) {
     return false;
   }

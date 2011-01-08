@@ -10,8 +10,8 @@
 void writeTime(LiquidCrystal &out, int address, uint8_t col, uint8_t row, uint8_t mode);
 void writeTemp(LiquidCrystal &out, uint8_t col, uint8_t row);
 
-extern char* downame[];
-extern char* monthname[];
+extern const char* downame[];
+extern const char* monthname[];
 
 class BudikInterface
 {
@@ -47,6 +47,11 @@ class BudikInterface
         for(i=col; i<16; i++)
             lcd << " ";
     }
+
+    typedef const struct{
+        uint8_t row:8;
+        uint8_t column:4;
+    } UIPosition;
 
  protected:
     LiquidCrystal &lcd;
@@ -94,21 +99,21 @@ class BudikTimeInterface: public BudikInterface
         BudikInterface::print(col, row, mode);
 
 	lcd.setCursor(col, row);
-	lcd << downame[time.dow-1] << ((time.day<0x10) ? "0" : "") << _HEX(time.day);
+	lcd << downame[time->dow-1] << ((time->day<0x10) ? "0" : "") << _HEX(time->day);
 
         if(mode==3){
             lcd.setCursor(col+8, row);
-            lcd << monthname[readBCD(time.month)-1] << " " << _HEX(time.century);
-            if(time.year<0x10) lcd << "0";
-            lcd << _HEX(time.year);
+            lcd << monthname[decodeBCD(time->month)-1] << " " << _HEX(time->century);
+            if(time->year<0x10) lcd << "0";
+            lcd << _HEX(time->year);
         }
 
 	
 	lcd.setCursor(col+5,row+((mode==2)?0:1));
-	if(time.hour<0x10) lcd << " ";
-	lcd << _HEX(time.hour) << ":";
-	if(time.minute<0x10) lcd << "0";
-	lcd << _HEX(time.minute);
+	if(time->hour<0x10) lcd << " ";
+	lcd << _HEX(time->hour) << ":";
+	if(time->minute<0x10) lcd << "0";
+	lcd << _HEX(time->minute);
     }
 
     virtual void setup(uint8_t col, uint8_t row)
@@ -116,14 +121,14 @@ class BudikTimeInterface: public BudikInterface
         BudikInterface::setup(col, row);
     }
 
-    virtual inline void setTime(TimeValue t)
+    virtual inline void setTime(TimeValue &t)
     {
-        time = t;
+        time = &t;
     }
 
 
  protected:
-    TimeValue time;
+    TimeValue *time;
 };
 
 class BudikSetTimeInterface: public BudikTimeInterface
@@ -137,7 +142,7 @@ class BudikSetTimeInterface: public BudikTimeInterface
     {
         BudikTimeInterface::print(col, row, 3);
         clearRow(col, row+2);
-        lcd.setCursor(col+nibbles[nibble], row+nibblerow[nibble]);
+        lcd.setCursor(col+nibbles[nibble].column, row+nibbles[nibble].row);
         lcd.enableCursor(true, set_mode);
         //lcd << ((set_mode) ? "=": "^");
     }
@@ -163,15 +168,15 @@ class BudikSetTimeInterface: public BudikTimeInterface
  protected:
     bool set_mode;
     uint8_t nibble;
-    static uint8_t nibbles[];
-    static uint8_t nibblerow[];
+    static UIPosition nibbles[];
 };
 
 typedef struct _AlarmValue {
-    uint8_t hour;
-    uint8_t minute;
-    uint8_t dow_en; //MSB> Su Sa Fr Th We Tu Mo EN <LSB
-    uint8_t flags;
+    uint8_t hour:6;
+    uint8_t minute:7;
+    uint8_t dow:7;
+    uint8_t en:1; //MSB> Su Sa Fr Th We Tu Mo EN <LSB
+    uint8_t flags:3;
 } AlarmValue;
 
 class BudikSetAlarmInterface: public BudikTimeInterface
@@ -185,7 +190,7 @@ class BudikSetAlarmInterface: public BudikTimeInterface
     {
         BudikTimeInterface::print(col, row, 2);
         clearRow(col, row+2);
-        lcd.setCursor(col+nibbles[nibble], row+nibblerow[nibble]);
+        lcd.setCursor(col+nibbles[nibble].column, row+nibbles[nibble].row);
         lcd.enableCursor(true, set_mode);
         //lcd << ((set_mode) ? "=": "^");
     }
@@ -195,7 +200,6 @@ class BudikSetAlarmInterface: public BudikTimeInterface
         BudikTimeInterface::setup(col, row);
         clearRow(col, row+2);
         lcd.setCursor(col, row+3);
-        lcd << "  Nastavit cas";
     }
 
     virtual void setMode(bool mode)
@@ -210,15 +214,14 @@ class BudikSetAlarmInterface: public BudikTimeInterface
 
     virtual void setAlarm(AlarmValue &a)
     {
-        alarm = a;
+        alarm = &a;
     }
 
  protected:
-    AlarmValue alarm;
+    AlarmValue *alarm;
     bool set_mode;
     uint8_t nibble;
-    static uint8_t nibbles[];
-    static uint8_t nibblerow[];
+    static UIPosition nibbles[];
 };
 
 

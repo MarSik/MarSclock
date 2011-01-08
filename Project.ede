@@ -7,8 +7,8 @@
    (ede-proj-target-makefile-program "main.hex"
     :name "main.hex"
     :path ""
-    :source '("main.cpp" "utils.cpp" "I2CLiquidCrystal.cpp" "FiniteStateMachine.cpp" "VirtualWire.cpp" "BudikRTC.c" "BudikRTC.cpp" "BudikInterfaces.cpp")
-    :auxsource '("Events.h" "BudikEvents.h" "BudikStates.h" "utils.h" "Streaming.h" "FiniteStateMachine.h" "BudikInterfaces.h" "I2CLiquidCrystal.h" "BudikRTC.h")
+    :source '("main.cpp" "utils.cpp" "I2CLiquidCrystal.cpp" "FiniteStateMachine.cpp" "VirtualWire.cpp" "BudikRTC.c" "BudikRTC.cpp" "BudikInterfaces.cpp" "EventQueue.cpp")
+    :auxsource '("Events.h" "BudikEvents.h" "BudikStates.h" "utils.h" "Streaming.h" "FiniteStateMachine.h" "BudikInterfaces.h" "I2CLiquidCrystal.h" "BudikRTC.h" "lang.h")
     )
    (ede-proj-target-aux "upload"
     :name "upload"

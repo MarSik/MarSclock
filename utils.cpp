@@ -1,3 +1,7 @@
+#include <WProgram.h>
+#include "utils.h"
+
+
 int writeHex(int c)
 {
     if(c<10) return '0'+c;
@@ -30,8 +34,12 @@ int readHex(int c)
 	}
 }
 
-int readBCD(int BCD)
+uint8_t decodeBCD(uint8_t BCD)
 {
-	return 10*(BCD >> 4) + (BCD & 0x15);
+    return 10*(BCD >> 4) + (BCD & 0b1111);
 }
 
+uint8_t encodeBCD(uint8_t num)
+{
+    return ((num/10) << 4) + (num % 10);
+}

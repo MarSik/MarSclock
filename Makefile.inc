@@ -65,7 +65,7 @@ ALL_ASFLAGS = -mmcu=$(MCU) -I. -x assembler-with-cpp $(ASFLAGS)
 # Default target.
 all: build
 
-build: elf hex
+build: elf size hex
 
 elf: $(TARGET).elf
 hex: $(TARGET).hex
@@ -85,7 +85,6 @@ fuse:
 	$(AVRDUDE) $(AVRDUDE_FLAGS) $(AVRDUDE_WRITE_HFUSE)
 	$(AVRDUDE) $(AVRDUDE_FLAGS) $(AVRDUDE_WRITE_EFUSE)
 
-
 # Convert ELF to COFF for use in debugging / simulating in AVR Studio or VMLAB.
 COFFCONVERT=$(OBJCOPY) --debugging \
 --change-section-address .data-0x800000 \
@@ -101,6 +100,9 @@ coff: $(TARGET).elf
 extcoff: $(TARGET).elf
 	$(COFFCONVERT) -O coff-ext-avr $(TARGET).elf $(TARGET).cof
 
+
+size: $(TARGET).elf
+	$(SIZE) --common $<
 
 .SUFFIXES: .elf .hex .eep .lss .sym
 
@@ -149,4 +151,4 @@ clean:
 	$(TARGET).map $(TARGET).sym $(TARGET).lss core.a \
 	$(OBJ) $(LST) $(SRC:.c=.s) $(SRC:.c=.d) $(CXXSRC:.cpp=.s) $(CXXSRC:.cpp=.d)
 
-.PHONY:	all upload fuses eeprom build elf hex eep lss sym program coff extcoff clean
+.PHONY:	all upload size fuses eeprom build elf hex eep lss sym program coff extcoff clean

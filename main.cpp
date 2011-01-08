@@ -39,7 +39,7 @@ AlarmsState st_alarms(intf_setalarm, ste_totime);
 MenuState<5> st_mainmenu(intf_menu, "");
 MenuState<2> st_submenu(intf_menu, "Sub menu");
 BacklightState st_backlight(intf_backlight, 4, ste_tomainmenu);
-SensorState st_sensors(intf_sensors, ste_tomainmenu);
+//SensorState st_sensors(intf_sensors, ste_tomainmenu);
 
 // FSM engine
 FiniteStateMachine fsm(st_time);
@@ -51,16 +51,7 @@ void ste_toalarms() {fsm.transitionTo(st_alarms);}
 void ste_tomainmenu() {fsm.transitionTo(st_mainmenu);}
 void ste_tosubmenu() {fsm.transitionTo(st_submenu);}
 void ste_tobacklight() {fsm.transitionTo(st_backlight);}
-void ste_tosensors() {fsm.transitionTo(st_sensors);}
-
-// rotary selector
-uint8_t rotPos = 4;
-
-// RTC Addresses
-int HOUR = 0xB;
-int MINUTE = 0xA;
-int SECOND = 0x9;
-int CENTURY = 0x8;
+//void ste_tosensors() {fsm.transitionTo(st_sensors);}
 
 // 555 timer at about 200Hz
 #define TIMER 2
@@ -71,7 +62,6 @@ int CENTURY = 0x8;
 #define DEBOUNCETIME 20
 #define HOLDTIME 3000
 long debouncems = 0;
-
 
 void wakeupTimer(void)
 {
@@ -166,7 +156,7 @@ void setup() {
         st_mainmenu.addMenuItem(0, "Podsviceni", ste_tobacklight);
         st_mainmenu.addMenuItem(1, "Casovac", ste_toalarms);
         st_mainmenu.addMenuItem(2, "Akce", ste_tosubmenu);
-        st_mainmenu.addMenuItem(3, "Senzory", ste_tosensors);
+        st_mainmenu.addMenuItem(3, "Senzory", ste_tomainmenu);
         st_mainmenu.addMenuItem(4, "Zpet", ste_totime);
 
         st_submenu.addMenuItem(0, "Zpet do menu", ste_tomainmenu);
@@ -186,7 +176,7 @@ void setup() {
 	PCICR |= _BV(PCIE0); 
 
         // Inital refresh of gui
-	queue.enqueueEvent(EV_BACKLIGHT, rotPos);
+	queue.enqueueEvent(EV_BACKLIGHT, 4);
         queue.enqueueEvent(EV_REFRESH, 0);
 
 	Serial.println("Setup done");
@@ -259,106 +249,26 @@ void loop()
 	int hour = 0;
 	int command = 0;
 	int data1 = 0;
-	int data2 = 0;
 	
 	if (Serial.available() > 0) {
 		command = Serial.read();
-		while (Serial.available() <= 0) delay(2);
-		data1 = readHex(Serial.read());
 		
-		//Read byte from RAM
-		if(command=='r'){
-			setAddr(data1);
-			digitalWrite(OE, 0);
-			digitalWrite(WE, 1); 
-			//hour = readFull(D0, D1, D2, D3, D4, D5, D6, D7);
-			//hour = readBCD(hour);
-			hour = readI2CMux();
-			Serial.print(0x1FFF0+data1, HEX);
-			Serial.print(" ");
-			Serial.println(hour, HEX);
+		if(command=='L'){
+                    while (Serial.available() <= 0) delayMicroseconds(2);
+                    data1 = readHex(Serial.read());
+                    while (Serial.available() <= 0) delayMicroseconds(2);
+                    data1 = data1 << 4;
+                    data1 += readHex(Serial.read());
+                    if(data1==0) digitalWrite(LCDLIGHT, LOW);
+                    else if(data1==0xFF) digitalWrite(LCDLIGHT, HIGH);
+                    else analogWrite(LCDLIGHT, data1);
 		}
-		
-		//Set RTC registers write mode 0/1
-		if(command=='W'){
-			setAddr(0x8);
-			digitalWrite(OE, 0);
-			digitalWrite(WE, 1);
-			hour = readI2CMux();
-			//hour = readFull(D0, D1, D2, D3, D4, D5, D6, D7);
-			digitalWrite(OE, 1);
-			delay(5);
-			if(data1)
-				writeI2CMux0(hour | 0x80);
-			//writeFull(hour | 0x80, D0, D1, D2, D3, D4, D5, D6, D7);
-			else
-				writeI2CMux0(hour & 0x7F);
-			//writeFull(hour & 0x7F, D0, D1, D2, D3, D4, D5, D6, D7);
-			delay(30);
-			dirI2CMux0(false);
-			digitalWrite(WE, 0);
-			digitalWrite(WE, 1);
-			digitalWrite(OE, 0);
-			dirI2CMux0(true);
-			delay(30);
-		}
-		
-		//Write byte to RAM
-		if(command=='w'){
-			while (Serial.available() <= 0) delayMicroseconds(2);
-			data2 = readHex(Serial.read()) << 4;
-			while (Serial.available() <= 0) delayMicroseconds(2);
-			data2 += readHex(Serial.read());
-			
-			digitalWrite(OE, 1);
-			digitalWrite(WE, 1);
-			setAddr(data1);
-			delay(30);
-			
-			writeI2CMux0(data2);
-			delay(5);
-			dirI2CMux0(false);
-			//writeFull(data2, D0, D1, D2, D3, D4, D5, D6, D7);
-			delay(30);
-			
-			digitalWrite(WE, 0);
-			delay(30);  
-			digitalWrite(WE, 1);
-			delay(30);
-			dirI2CMux0(true);
-			delay(30);
-			digitalWrite(OE, 0);
-			delay(30);
-			
-			Serial.print(0x1FFF0+data1, HEX);
-			Serial.print(" ");
-			Serial.print(data2, HEX);
-			Serial.println(" w");
-		}
-		
-		if(command=='x'){
-			lcd.begin();
-			lcd.clear();
-			lcd.print("LCD--I2C");
-			lcd.setCursor(0,1);
-			lcd.print("XX:XX");
-		}
-		
-		if(command=='C'){
-			int temp = analogRead(TEMPERATURE);
-			temp = map(temp, 0, 1024, 0, 500);
-			lcd.setCursor(0,2);
-			lcd.print(temp, DEC);
-		}
-		
-		if(command=='l'){
-			while (Serial.available() <= 0) delayMicroseconds(2);
-			data1 = data1 << 4;
-			data1 += readHex(Serial.read());
-			if(data1==0) digitalWrite(LCDLIGHT, LOW);
-			else if(data1==0xFF) digitalWrite(LCDLIGHT, HIGH);
-			else analogWrite(LCDLIGHT, data1);
-		}
+
+                if(command==',') queue.enqueueEvent(EV_LEFT, 0);
+                if(command=='.') queue.enqueueEvent(EV_RIGHT, 0);
+                if(command==' ') queue.enqueueEvent(EV_SELECT, 1);
+                if(command=='c') queue.enqueueEvent(EV_SELECT, 0);
+                if(command=='v') queue.enqueueEvent(EV_HOLD, 1);
 	} 
 	
         if(vw_have_message()){
@@ -371,11 +281,11 @@ void loop()
                 Serial << "RF:";
                 for(i=0; i<len; i++) Serial << " " << _HEX(msg[i]);
                 Serial << endl;
-                st_sensors.addData(msg[0], msg[1], msg[2]);
+                //st_sensors.addData(msg[0], msg[1], msg[2]);
                 queue.enqueueEvent(EV_REFRESH, 0);
             }
             else{
-                st_sensors.addData(0xfa, 0x11, 0xed);
+                //st_sensors.addData(0xfa, 0x11, 0xed);
                 queue.enqueueEvent(EV_REFRESH, 0);
             }
         }

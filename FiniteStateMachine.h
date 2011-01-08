@@ -69,7 +69,7 @@ class FiniteStateMachine {
 		bool 	needToTriggerEnter;
 		State* 	currentState;
 		State* 	nextState;
-		unsigned long stateChangeTime;
+		//unsigned long stateChangeTime;
 };
 
 #endif

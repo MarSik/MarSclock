@@ -1,7 +1,8 @@
 #ifndef budik_states_20101223_h
 #define budik_states_20101223_h
 
-#include "WProgram.h"
+#include <WProgram.h>
+#include <avr/pgmspace.h>
 #include "BudikEvents.h"
 #include "BudikInterfaces.h"
 #include "utils.h"
@@ -24,14 +25,14 @@ class BudikState: public State {
 
 class TimeState : public BudikState {
 protected:
-    void (*funcPress)();
-    void (*funcHold)();
+    void (&funcPress)();
+    void (&funcHold)();
     BudikTimeInterface &out;
 
 public:
  TimeState(BudikTimeInterface &out,
-           void (*funcPress)(),
-           void (*funcHold)()):
+           void (&funcPress)(),
+           void (&funcHold)()):
     BudikState(), funcPress(funcPress), funcHold(funcHold), out(out)
     {
     };
@@ -44,10 +45,10 @@ public:
         case EV_RIGHT:
             break;
         case EV_SELECT:
-            if(data) (*funcPress)();
+            if(data) (funcPress)();
             break;
         case EV_HOLD:
-            if(data) (*funcHold)();
+            if(data) (funcHold)();
             break;
         }
 
@@ -66,7 +67,8 @@ public:
 
     virtual void refresh(int data)
     {
-        out.setTime(readTime(false));
+        TimeValue tv = readTime(false);
+        out.setTime(tv);
         out.print(0, 0, data);
     }
 
@@ -74,14 +76,15 @@ public:
 
 class SetTimeState : public BudikState {
 protected:
-    void (*funcHold)();
+    void (&funcHold)();
     BudikSetTimeInterface &out;
     uint8_t nibble;
     bool set;
+    TimeValue tv;
 
 public:
  SetTimeState(BudikSetTimeInterface &out,
-           void (*funcHold)()):
+           void (&funcHold)()):
     BudikState(), funcHold(funcHold), out(out),
         nibble(0), set(false)
     {
@@ -89,12 +92,67 @@ public:
 
     virtual void event(int event, int data)
     {
+        uint8_t v = 0xFF;
+
         switch(event){
         case EV_LEFT:
             // select number on the left
             if(!set && nibble){
                 nibble--;
                 queue.enqueueEvent(EV_REFRESH, 0);
+            }
+
+            if(set){
+                switch(nibble){
+                case 0:
+                    if(tv.dow>1){
+                        tv.dow--;
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                case 1:
+                    if(tv.day>1){
+                        v = decodeBCD(tv.day) - 1;
+                        tv.day = encodeBCD(v);
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                case 2:
+                    if(tv.hour>0){
+                        v = decodeBCD(tv.hour) - 1;
+                        tv.hour = encodeBCD(v);
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                case 3:
+                    if(tv.minute>0){
+                        v = decodeBCD(tv.minute) - 1;
+                        tv.minute = encodeBCD(v);
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                case 4:
+                    if(tv.month>1){
+                        v = decodeBCD(tv.month) - 1;
+                        tv.month = encodeBCD(v);
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                case 5:
+                    if(tv.century>0x20){
+                        v = decodeBCD(tv.century) - 1;
+                        tv.century = encodeBCD(v);
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                case 6:
+                    if(tv.year>0){
+                        v = decodeBCD(tv.year) - 1;
+                        tv.year = encodeBCD(v);
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                }
             }
             break;
 
@@ -103,6 +161,59 @@ public:
             if(!set && nibble<6){
                 nibble++;
                 queue.enqueueEvent(EV_REFRESH, 0);
+            }
+
+            if(set){
+                switch(nibble){
+                case 0:
+                    if(tv.dow<7){
+                        tv.dow++;
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                case 1:
+                    if(tv.day<0x31){
+                        v = decodeBCD(tv.day) + 1;
+                        tv.day = encodeBCD(v);
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                case 2:
+                    if(tv.hour<0x23){
+                        v = decodeBCD(tv.hour) + 1;
+                        tv.hour = encodeBCD(v);
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                case 3:
+                    if(tv.minute<0x59){
+                        v = decodeBCD(tv.minute) + 1;
+                        tv.minute = encodeBCD(v);
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                case 4:
+                    if(tv.month<0x12){
+                        v = decodeBCD(tv.month) + 1;
+                        tv.month = encodeBCD(v);
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                case 5:
+                    if(tv.century<0x22){
+                        v = decodeBCD(tv.century) + 1;
+                        tv.century = encodeBCD(v);
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                case 6:
+                    if(tv.year<0x99){
+                        v = decodeBCD(tv.year) + 1;
+                        tv.year = encodeBCD(v);
+                        queue.enqueueEvent(EV_REFRESH, 0);
+                    }
+                    break;
+                }
             }
             break;
 
@@ -115,7 +226,7 @@ public:
             break;
 
         case EV_HOLD:
-            if(data) (*funcHold)();
+            if(data) (funcHold)();
             break;
         }
 
@@ -129,12 +240,14 @@ public:
     virtual void enter()
     {
         out.setup(0, 0);
+        tv = readTime(false);
+        tv.second = 0;
         refresh(1);
     }
 
     virtual void refresh(int data)
     {
-        out.setTime(readTime(false));
+        out.setTime(tv);
         out.setMode(set);
         out.setNibble(nibble);
         out.print(0, 0, data);
@@ -144,14 +257,14 @@ public:
 
 class AlarmsState : public BudikState {
 protected:
-    void (*funcHold)();
+    void (&funcHold)();
     BudikSetAlarmInterface &out;
     uint8_t nibble;
     bool set;
 
 public:
  AlarmsState(BudikSetAlarmInterface &out,
-           void (*funcHold)()):
+           void (&funcHold)()):
     BudikState(), funcHold(funcHold), out(out),
         nibble(0), set(false)
     {
@@ -185,7 +298,7 @@ public:
             break;
 
         case EV_HOLD:
-            if(data) (*funcHold)();
+            if(data) (funcHold)();
             break;
         }
 
@@ -204,7 +317,8 @@ public:
 
     virtual void refresh(int data)
     {
-        out.setTime(readTime(false));
+        TimeValue tv = readTime(false);
+        out.setTime(tv);
         out.setMode(set);
         out.setNibble(nibble);
         out.print(0, 0, data);
@@ -250,7 +364,8 @@ public:
 
     virtual void refresh(int data)
     {
-        out.setTime(readTime(false));
+        TimeValue tv = readTime(false);
+        out.setTime(tv);
         out.setItem(menuItems[selected].title);
         out.print(0,0, data);
     };
@@ -277,11 +392,11 @@ protected:
 class BacklightState : public BudikState {
 protected:
     int backlight;
-    void (*func)();
+    void (&func)();
     BudikBacklightInterface &out;
 
 public:
- BacklightState(BudikBacklightInterface &out, int backlight, void (*func)()):
+ BacklightState(BudikBacklightInterface &out, int backlight, void (&func)()):
     BudikState(), func(func), out(out), backlight(backlight)
     {
     };
@@ -300,7 +415,7 @@ public:
             queue.enqueueEvent(EV_REFRESH, 0);
             break;
         case EV_SELECT:
-            if(data) (*func)();
+            if(data) (func)();
             break;
         }
 
@@ -315,7 +430,8 @@ public:
 
     virtual void refresh(int data)
     {
-        out.setTime(readTime(false));
+        TimeValue tv = readTime(false);
+        out.setTime(tv);
         out.setBacklight(backlight);
         out.print(0, 0, data);
     }
@@ -325,16 +441,16 @@ public:
 
 class SensorState : public BudikState {
 protected:
-    void (*func)();
+    void (&func)();
     BudikTickerInterface &out;
     uint8_t sensor[5];
     uint8_t code[5];
     uint8_t value[5];
-    int first;
-    int last;
+    uint8_t first;
+    uint8_t last;
 
 public:
- SensorState(BudikTickerInterface &out, void (*func)()):
+ SensorState(BudikTickerInterface &out, void (&func)()):
     BudikState(), func(func), out(out), first(0), last(0)
     {
     };
@@ -343,7 +459,7 @@ public:
     {
         switch(event){
         case EV_SELECT:
-            if(data) (*func)();
+            if(data) (func)();
             break;
         }
 
@@ -377,7 +493,8 @@ public:
         }
 
         out.setLine2(str);
-        out.setTime(readTime(false));
+        TimeValue tv = readTime(false);
+        out.setTime(tv);
         out.print(0, 0, data);
     }
 

@@ -61,12 +61,12 @@
 # $Id$
 
 # Update these to reflect the location of the Arduino IDE and avrdude installations, respectively
-ARDUINO = /Applications/Arduino.app/Contents/Resources/Java/hardware/arduino/cores/arduino/
-ARDUINO_LIB = /Applications/Arduino.app/Contents/Resources/Java/libraries/
-AVRDUDE_DIR = /usr/local/CrossPAck-AVR/bin/
-#ARDUINO = /home/msivak/Applications/arduino-0021/hardware/arduino/cores/arduino/
-#ARDUINO_LIB =  /home/msivak/Applications/arduino-0021/libraries/
-#AVRDUDE_DIR = /usr/bin/
+#ARDUINO = /Applications/Arduino.app/Contents/Resources/Java/hardware/arduino/cores/arduino/
+#ARDUINO_LIB = /Applications/Arduino.app/Contents/Resources/Java/libraries/
+#AVRDUDE_DIR = /usr/local/CrossPAck-AVR/bin/
+ARDUINO = /home/msivak/Applications/arduino-0021/hardware/arduino/cores/arduino/
+ARDUINO_LIB =  /home/msivak/Applications/arduino-0021/libraries/
+AVRDUDE_DIR = /usr/bin/
 
 # Target device
 MCU = atmega328p
@@ -77,8 +77,8 @@ HFUSE =
 EFUSE =
 
 # ISP Programmer
-PORT = /dev/tty.usbmodem*
-#PORT = /dev/ttyACM*
+#PORT = /dev/tty.usbmodem*
+PORT = /dev/ttyACM*
 FORMAT = ihex
 PROTOCOL = stk500v1
 
