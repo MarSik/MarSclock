@@ -12,6 +12,7 @@ COPT = s
 CSTANDARD = -std=gnu99
 CDEBUG = -g$(DEBUG)
 CWARN = -Wall -Wstrict-prototypes
+CXXWARN = -Wall
 CTUNING = -Wall -O$(COPT) -fpack-struct -fshort-enums -funsigned-char -funsigned-bitfields \
 -fno-exceptions -ffunction-sections -fdata-sections
 CEXTRA = -Wa,-adhlns=$(<:.c=.lst)
@@ -22,7 +23,7 @@ CDEFS = -DF_CPU=$(F_CPU)
 CXXDEFS = -DF_CPU=$(F_CPU)
 
 CFLAGS = $(CDEBUG) $(CDEFS) $(CINCS) $(CTUNING) $(CWARN) $(CSTANDARD) $(CEXTRA)
-CXXFLAGS = $(CDEBUG) $(CXXDEFS) $(CINCS) $(CTUNING) $(CWARN) $(CXXEXTRA)
+CXXFLAGS = $(CDEBUG) $(CXXDEFS) $(CINCS) $(CTUNING) $(CXXWARN) $(CXXEXTRA)
 ASFLAGS = -Wa,-adhlns=$(<:.S=.lst),-g$(DEBUG) 
 LDFLAGS = -Wl,--gc-sections
 
@@ -152,3 +153,4 @@ clean:
 	$(OBJ) $(LST) $(SRC:.c=.s) $(SRC:.c=.d) $(CXXSRC:.cpp=.s) $(CXXSRC:.cpp=.d)
 
 .PHONY:	all upload size fuses eeprom build elf hex eep lss sym program coff extcoff clean
+.PRECIOUS: .elf .hex .eep

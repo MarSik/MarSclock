@@ -137,7 +137,7 @@ void setup() {
         analogWrite(11, 128); // initialize backlight and it's PWM driver
 
         //Init buzzer - we use Timer2 for Backlight control, but this won´t hurt it 
-        TCCR2B = TCCR2B & 0xf8 | 0b100; // Set Timer2 overflow freq to ~488Hz
+        TCCR2B = (TCCR2B & 0xf8) | 0b100; // Set Timer2 overflow freq to ~488Hz
         TCCR2A &= ~(_BV(COM2B1) | _BV(COM2B0)); // Disconnect Timer2B to disable interrupts on INT1 port
         TIMSK2 |= _BV(TOIE2); // Enable Timer2 overflow INT which will flip the buzzer -> 244Hz B3 sound
         pinMode(A3, OUTPUT);
@@ -218,7 +218,6 @@ void writeTemp(LiquidCrystal &lcd, uint8_t col, uint8_t row)
 	uint16_t temp = 0;
 	uint16_t vcc;
 	uint16_t vcccoef;
-	uint8_t i;
 	
 	// calibrate sensor
 	vcc = analogRead(A0); //23.5.2 of the manual, discard first reading
@@ -246,7 +245,6 @@ void writeTemp(LiquidCrystal &lcd, uint8_t col, uint8_t row)
 
 void loop()
 {
-	int hour = 0;
 	int command = 0;
 	int data1 = 0;
 	
