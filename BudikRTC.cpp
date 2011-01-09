@@ -145,6 +145,7 @@ TimeValue readTime(bool fullmode)
 AlarmValue readAlarm(uint8_t alidx)
 {
     AlarmValue v;
+    uint8_t dow_en;
 
     dirI2CMux0(true);
     alidx &= ALARM_MASK;
@@ -152,9 +153,9 @@ AlarmValue readAlarm(uint8_t alidx)
 
     // DOW + EN bits
     setAddr(ALARM_ADDR2, ALARM_ADDR1, ALARM_ADDR0 + ALARM_DOW + (alidx << ALARM_NEXT_SHIFT));
-    v.dow = readI2CMux();
-    v.en = v.dow & 0x1;
-    v.dow &= 0xFE;
+    dow_en = readI2CMux();
+    v.en = dow_en & 0x1;
+    v.dow = dow_en >> 1;
     // Hour
     setAddr(ALARM_ADDR2, ALARM_ADDR1, ALARM_ADDR0 + ALARM_HOUR + (alidx << ALARM_NEXT_SHIFT));
     v.hour = readI2CMux();
@@ -174,7 +175,7 @@ void writeAlarm(uint8_t alidx, AlarmValue &v)
 
     // DOW + EN bits
     setAddr(ALARM_ADDR2, ALARM_ADDR1, ALARM_ADDR0 + ALARM_DOW + (alidx << ALARM_NEXT_SHIFT));
-    writeI2CData(I2CDATA, I2CRTC, (v.dow & 0xFE) | (v.en & 0x1));
+    writeI2CData(I2CDATA, I2CRTC, (v.dow << 1) + v.en);
 
     digitalWrite(WE, 0);
     delayMicroseconds(I2CWRITEDELAYUS);

@@ -143,8 +143,7 @@ class BudikSetTimeInterface: public BudikTimeInterface
         BudikTimeInterface::print(col, row, 3);
         clearRow(col, row+2);
         lcd.setCursor(col+nibbles[nibble].column, row+nibbles[nibble].row);
-        lcd.enableCursor(true, set_mode);
-        //lcd << ((set_mode) ? "=": "^");
+        lcd.enableCursor(true, !set_mode);
     }
 
     virtual void setup(uint8_t col, uint8_t row)
@@ -199,26 +198,18 @@ class BudikSetAlarmInterface: public BudikTimeInterface
             << ((alarm->hour<10)?"0":"") << _HEX(alarm->hour)
             << ":"
             << ((alarm->minute<10)?"0":"") << _HEX(alarm->minute);
-        clearRow(col+13, row+2);
 
         lcd.setCursor(col, row+3);
-        lcd << "E PoUtStCtPaSoNe";
-
-        if(!alarm->en){
-            lcd.setCursor(col, row+3);
-            lcd << "0";
-        }
+        if(alarm->en) lcd << "E ";
+        else lcd << "0 ";
 
         for(i=0; i<7; i++){
-            if((alarm->dow >> (6 - i)) & 0x1 == 0){
-                lcd.setCursor(col+3+2*i, row+3);
-                lcd << "_";
-            }
+            if(alarm->dow & _BV(i)) lcd << downame[i];
+            else lcd << downame[i][0] << "_";
         }
 
         lcd.setCursor(col+nibbles[nibble].column, row+nibbles[nibble].row);
-        lcd.enableCursor(true, set_mode);
-        //lcd << ((set_mode) ? "=": "^");
+        lcd.enableCursor(true, !set_mode);
     }
 
     virtual void setup(uint8_t col, uint8_t row)

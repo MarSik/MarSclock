@@ -245,6 +245,10 @@ public:
         refresh(1);
     }
 
+    virtual void exit()
+    {
+    }
+
     virtual void refresh(int data)
     {
         out.setTime(tv);
@@ -289,7 +293,7 @@ public:
             switch(nibble){
             case 0:
                 if(alarm.id){
-                    //writeAlarm(alarm.id, alarm);
+                    writeAlarm(alarm.id, alarm);
                     alarm.id--;
                     alarm = readAlarm(alarm.id);
                 }
@@ -325,7 +329,7 @@ public:
             switch(nibble){
             case 0:
                 if(alarm.id<63){
-                    //writeAlarm(alarm.id, alarm);
+                    writeAlarm(alarm.id, alarm);
                     alarm.id++;
                     alarm = readAlarm(alarm.id);
                 }
@@ -350,11 +354,11 @@ public:
             break;
 
         case EV_SELECT:
-            // select number vs. set number
+            // select number vs. set number, vs. toggle
             if(data){
                 if(nibble<=2) set = !set;
-                else if(nibble==3) alarm.en = !alarm.en;
-                else alarm.dow ^= (1 << (7 - (nibble - 4)));
+                else if(nibble==3) alarm.en ^= 1;
+                else alarm.dow ^= _BV(nibble - 4);
                 queue.enqueueEvent(EV_REFRESH, 0);
             }
             break;
@@ -378,7 +382,7 @@ public:
         refresh(1);
     }
 
-    virtual void leave()
+    virtual void exit()
     {
         writeAlarm(alarm.id, alarm);
     }
