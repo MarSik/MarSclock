@@ -8,6 +8,8 @@
 #include "utils.h"
 #include "config.h"
 #include "BudikRTC.h"
+#include "FiniteStateMachine.h"
+#include "BudikEvents.h"
 
 class BudikState: public State {
  public:
@@ -385,6 +387,7 @@ public:
     virtual void exit()
     {
         writeAlarm(alarm.id, alarm);
+        queue.enqueueEvent(EV_REHASHALARM, 0);
     }
 
     virtual void refresh(int data)

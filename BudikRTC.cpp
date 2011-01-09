@@ -177,26 +177,67 @@ uint8_t findNextAlarm(TimeValue &tv, AlarmValue *upcoming)
 
     for(idx=0; idx<ALARM_MAX; idx++){
         alarm = readAlarm(idx);
-        if(!alarm.en) continue;
+        // alarm is not enabled or does not happen on any day
+        if(!alarm.en || !alarm.dow) continue;
 
         skip = 0;
         isupcoming++;
         
-        //first alarm
+        //first alarm is automatically upcoming
         if(isupcoming==1){
             *upcoming = alarm;
             continue;
         }
-        
-        //tested alarm happens on later day
-        for(dowcount = 0; dowcount < 7; dowcount++){
-            dowidx = (tv.dow -1 +dowcount) % 7;
+
+        // test if both can happen (have happened) this day
+        dowidx = tv.dow - 1;
+        if((upcoming->dow & _BV(dowidx)) && (alarm.dow & _BV(dowidx))){
+
+            // alarm happens later today
+            if(alarm.hour>tv.hour ||
+               (alarm.hour == tv.hour && alarm.minute>tv.minute)){
+                // test if upcoming happens later than alarm
+                if(alarm.hour<upcoming->hour ||
+                   (alarm.hour == upcoming->hour && alarm.minute < upcoming->minute)){
+                    *upcoming = alarm;
+                    continue;
+                }
+            }
+            // alarm already happened today
+            else{
+                // test if upcoming happens later today
+                if(tv.hour<upcoming->hour ||
+                   (tv.hour == upcoming->hour && tv.minute < upcoming->minute)){
+                    continue;
+                }
+            }
+        }
+
+        //both tested alarm and upcoming does not happen till later day
+        for(dowcount = 1; dowcount < 7; dowcount++){
+            dowidx = (tv.dow - 1 +dowcount) % 7;
+
+            // alarm does not happen on tested day, but upcoming is
             if((upcoming->dow & _BV(dowidx)) && !(alarm.dow & _BV(dowidx))){
                 skip++;
                 break;
             }
+
+            // alarm does happen on tested day, upcoming isn't
+            if(!(upcoming->dow & _BV(dowidx)) && (alarm.dow & _BV(dowidx))){
+                *upcoming = alarm;
+                skip++;
+                break;
+            }
+
+            // both happen on tested day
+            if(alarm.dow & _BV(dowidx)) break;
+
+            // neither happened on tested day, test another day
         }
         if(skip) continue;
+
+        //at this point, both upcoming and alarm happen on the same day
         
         //tested alarm happens on later hour
         if(upcoming->hour < alarm.hour) continue;
