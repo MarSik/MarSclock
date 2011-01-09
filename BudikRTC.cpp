@@ -169,6 +169,48 @@ AlarmValue readAlarm(uint8_t alidx)
     return v;
 }
 
+uint8_t findNextAlarm(TimeValue &tv, AlarmValue *upcoming)
+{
+    uint8_t idx, skip = 0, isupcoming = 0;
+    uint8_t dowidx, dowcount;
+    AlarmValue alarm;
+
+    for(idx=0; idx<ALARM_MAX; idx++){
+        alarm = readAlarm(idx);
+        if(!alarm.en) continue;
+
+        skip = 0;
+        isupcoming++;
+        
+        //first alarm
+        if(isupcoming==1){
+            *upcoming = alarm;
+            continue;
+        }
+        
+        //tested alarm happens on later day
+        for(dowcount = 0; dowcount < 7; dowcount++){
+            dowidx = (tv.dow -1 +dowcount) % 7;
+            if((upcoming->dow & _BV(dowidx)) && !(alarm.dow & _BV(dowidx))){
+                skip++;
+                break;
+            }
+        }
+        if(skip) continue;
+        
+        //tested alarm happens on later hour
+        if(upcoming->hour < alarm.hour) continue;
+        
+        //tested alarm happens on the same or later minute
+        if(upcoming->minute < alarm.minute) continue;
+        
+        //tested alarm happens earlier after all.. 
+        *upcoming = alarm;
+    }
+
+    return isupcoming;
+}
+
 void writeAlarm(uint8_t alidx, AlarmValue &v)
 {
     dirI2CMux0(false);	

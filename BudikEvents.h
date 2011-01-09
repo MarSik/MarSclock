@@ -10,7 +10,10 @@ enum _events {
         EV_HOLD,
 	EV_TAP,
 	EV_REFRESH,
-	EV_BACKLIGHT
+	EV_BACKLIGHT,
+        EV_CHECKALARM,
+        EV_REHASHALARM,
+        EV_ALARM
 };
 
 // the event queue

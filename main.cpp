@@ -63,11 +63,16 @@ void ste_tobacklight() {fsm.transitionTo(st_backlight);}
 #define HOLDTIME 3000
 long debouncems = 0;
 
+// Alarm we are waiting for
+AlarmValue upcoming_alarm;
+bool is_upcoming_alarm;
+
 void wakeupTimer(void)
 {
 	static long timer555 = 0;
 	if(timer555==0){
 		queue.enqueueEvent(EV_REFRESH, 0);
+                queue.enqueueEvent(EV_CHECKALARM, 0);
 		timer555 = SKIP555;
 	}
 	else timer555--;
@@ -178,6 +183,7 @@ void setup() {
         // Inital refresh of gui
 	queue.enqueueEvent(EV_BACKLIGHT, 4);
         queue.enqueueEvent(EV_REFRESH, 0);
+        queue.enqueueEvent(EV_REHASHALARM, 0);
 
 	Serial.println("Setup done");
 }
@@ -262,11 +268,33 @@ void loop()
                     else analogWrite(LCDLIGHT, data1);
 		}
 
-                if(command==',') queue.enqueueEvent(EV_LEFT, 0);
-                if(command=='.') queue.enqueueEvent(EV_RIGHT, 0);
-                if(command==' ') queue.enqueueEvent(EV_SELECT, 1);
-                if(command=='c') queue.enqueueEvent(EV_SELECT, 0);
-                if(command=='v') queue.enqueueEvent(EV_HOLD, 1);
+                else if(command==',') queue.enqueueEvent(EV_LEFT, 0);
+                else if(command=='.') queue.enqueueEvent(EV_RIGHT, 0);
+                else if(command==' ') queue.enqueueEvent(EV_SELECT, 1);
+                else if(command=='c') queue.enqueueEvent(EV_SELECT, 0);
+                else if(command=='v') queue.enqueueEvent(EV_HOLD, 1);
+
+                else if(command=='R'){
+                    AlarmValue al;
+                    al.hour = 0;
+                    al.minute = 0;
+                    al.dow = 0;
+                    al.en = 0;
+                    for(int idx=0; idx < ALARM_MAX; idx++)
+                        writeAlarm(idx, al);
+                    is_upcoming_alarm = false;
+                }
+
+                else if(command=='a'){
+                    TimeValue tv = readTime(false);
+                    uint8_t enabledAlarms = findNextAlarm(tv, &upcoming_alarm);
+                    is_upcoming_alarm =  (enabledAlarms > 0);
+                    if(is_upcoming_alarm){
+                        Serial << _DEC(upcoming_alarm.id) << ". "
+                               << _HEX(upcoming_alarm.hour) << ":" << _HEX(upcoming_alarm.minute)
+                               << " " << _BIN(upcoming_alarm.dow) << endl;
+                    }
+                }
 	} 
 	
         if(vw_have_message()){
@@ -299,6 +327,20 @@ void loop()
                     digitalWrite(STATUSLED, HIGH);
                     fsm.getCurrentState().refresh(data);
                     digitalWrite(STATUSLED, LOW);
+                }
+                else if(event==EV_CHECKALARM && is_upcoming_alarm){
+                    TimeValue tv = readTime(false);
+                    if(tv.hour == upcoming_alarm.hour &&
+                       tv.minute == upcoming_alarm.minute &&
+                       (upcoming_alarm.dow & _BV(tv.dow-1))){
+                        is_upcoming_alarm = false;
+                        queue.enqueueEvent(EV_ALARM, upcoming_alarm.id);
+                    }
+                }
+                else if(event==EV_REHASHALARM){
+                    TimeValue tv = readTime(false);
+                    uint8_t enabledAlarms = findNextAlarm(tv, &upcoming_alarm);
+                    is_upcoming_alarm =  (enabledAlarms > 0);
                 }
 
                 fsm.getCurrentState().event(event, data);
