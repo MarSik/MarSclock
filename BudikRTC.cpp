@@ -189,15 +189,14 @@ uint8_t findNextAlarm(TimeValue &tv, AlarmValue *upcoming)
             continue;
         }
 
-        // test if both can happen (have happened) this day
+        // test if alarm can happen (have happened)
         dowidx = tv.dow - 1;
-        if((upcoming->dow & _BV(dowidx)) && (alarm.dow & _BV(dowidx))){
-
+        if((alarm.dow & _BV(dowidx))){
             // alarm happens later today
             if(alarm.hour>tv.hour ||
                (alarm.hour == tv.hour && alarm.minute>tv.minute)){
-                // test if upcoming happens later than alarm
-                if(alarm.hour<upcoming->hour ||
+                // test if upcoming does not happen today or today, but later than alarm
+                if(!(upcoming->dow & _BV(dowidx)) || alarm.hour<upcoming->hour ||
                    (alarm.hour == upcoming->hour && alarm.minute < upcoming->minute)){
                     *upcoming = alarm;
                     continue;
@@ -206,7 +205,7 @@ uint8_t findNextAlarm(TimeValue &tv, AlarmValue *upcoming)
             // alarm already happened today
             else{
                 // test if upcoming happens later today
-                if(tv.hour<upcoming->hour ||
+                if((upcoming->dow & _BV(dowidx)) && tv.hour<upcoming->hour ||
                    (tv.hour == upcoming->hour && tv.minute < upcoming->minute)){
                     continue;
                 }
