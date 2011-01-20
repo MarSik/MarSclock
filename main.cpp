@@ -4,6 +4,7 @@
 #include "I2CLiquidCrystal.h"
 #include "Wire.h"
 #include "VirtualWire.h"
+#include "NewSoftSerial.h"
 #include "FiniteStateMachine.h"
 #include "EventDispatcher.h"
 #include "EventQueue.h"
@@ -17,6 +18,9 @@
 
 // I2C hooked LCD
 I2CLiquidCrystal lcd(I2CDATA, I2CLCD, 6, 5, 4, 0, 1, 2, 3);
+
+// Serial link to alarm board
+NewSoftSerial alarmBoard(ALRX, ALTX);
 
 // Interfaces
 BudikBasicInterface intf_time(lcd);
@@ -95,13 +99,13 @@ void rotInterrupt(void)
 }
 
 void setup() {
-	// RTC WE  & OE
+	// RTC WE  & OE, RFLink EN
 	pinMode(WE, OUTPUT);
 	pinMode(OE, OUTPUT);
-	pinMode(CE, OUTPUT);
+	pinMode(RFE, OUTPUT);
+
 	digitalWrite(WE, 1); // disable write
 	digitalWrite(OE, 1); // disable read
-	digitalWrite(CE, 0); // enable shield devices
 	
 	// Setup Timer
 	pinMode(TIMER, INPUT);
@@ -141,21 +145,19 @@ void setup() {
         lcd.enableCursor(false, false);
         analogWrite(11, 128); // initialize backlight and it's PWM driver
 
-        //Init buzzer - we use Timer2 for Backlight control, but this won´t hurt it 
-        TCCR2B = (TCCR2B & 0xf8) | 0b100; // Set Timer2 overflow freq to ~488Hz
-        TCCR2A &= ~(_BV(COM2B1) | _BV(COM2B0)); // Disconnect Timer2B to disable interrupts on INT1 port
-        TIMSK2 |= _BV(TOIE2); // Enable Timer2 overflow INT which will flip the buzzer -> 244Hz B3 sound
-        pinMode(A3, OUTPUT);
-
 	// Init 555 interrupt
 	pinMode(TIMER, INPUT);
 	attachInterrupt(INT555, wakeupTimer, FALLING);
 
-        // Init wireless
+        // Init wireless, but keep the receiver disabled
+	digitalWrite(RFE, 1); // disable wireless modules
         vw_set_tx_pin(5);
         vw_set_rx_pin(6);
         vw_setup(2000);
-        vw_rx_start();
+        //vw_rx_start();
+
+        // Alarm board comm link
+        alarmBoard.begin(9600);
 	
         // Init states
         st_mainmenu.addMenuItem(0, "Podsviceni", ste_tobacklight);
@@ -186,12 +188,6 @@ void setup() {
         queue.enqueueEvent(EV_REHASHALARM, 0);
 
 	Serial.println("Setup done");
-}
-
-// Timer2 Overflow
-ISR(TIMER2_OVF_vect)
-{
-    PINC |= _BV(BUZZER - A0); //toggle pin A3
 }
 
 // Pin Change vector 0 (Port B)
@@ -294,6 +290,26 @@ void loop()
                                << _HEX(upcoming_alarm.hour) << ":" << _HEX(upcoming_alarm.minute)
                                << " " << _BIN(upcoming_alarm.dow) << endl;
                     }
+                }
+
+                else if(command=='o'){
+                    uint8_t addr, hbyte, lbyte;
+                    Serial << "Expecting 1 HEX char for LED address:" << endl;
+                    while (!Serial.available());
+                    addr = readHex(Serial.read());
+                    Serial << "Expecting 3 HEX chars for LED value:" << endl;
+                    while (!Serial.available());
+                    hbyte = readHex(Serial.read());
+                    while (!Serial.available());
+                    lbyte = readHex(Serial.read()) << 4;
+                    while (!Serial.available());
+                    lbyte += readHex(Serial.read());
+                    Serial << "Set!" << endl;
+                    alarmBoard.write(0xff);
+                    alarmBoard.write(addr);
+                    alarmBoard.write(hbyte);
+                    alarmBoard.write(lbyte);
+                    alarmBoard.write(0xfc); //commit to leds
                 }
 	} 
 	

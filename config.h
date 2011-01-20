@@ -9,16 +9,15 @@
 // RTC direct ports
 #define WE 8
 #define OE 7
-#define CE 4
+
+// RFLink enable (active low)
+#define RFE 4
 
 // LCD backlight PWM controlled
 #define LCDLIGHT 11
 
 // LM335 sensor
 #define TEMPERATURE A2
-
-// Buzzer
-#define BUZZER A3
 
 // I2C I/O MUXes (MCP23016)
 #define I2CADDR 0x20
@@ -44,5 +43,9 @@
 #define ROTA 12
 #define ROTB 3
 #define INTROT ROTB-2
+
+// Alarm board commlink
+#define ALRX A1
+#define ALTX A3
 
 #endif
