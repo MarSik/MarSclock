@@ -132,6 +132,38 @@ TimeValue readTime(bool fullmode)
     return ts;
 }
 
+void writeTime(TimeValue &ts)
+{
+    byte* vars[] = {&(ts.second), &(ts.minute), &(ts.hour), &(ts.dow), &(ts.day), &(ts.month), &(ts.year), &(ts.century)};
+    int addrs[] = {RTC_SECOND, RTC_MINUTE, RTC_HOUR, RTC_DOW,
+                   RTC_DAY, RTC_MONTH, RTC_YEAR, RTC_CENTURY};
+    byte i;
+
+    dirI2CMux0(true);
+    setAddr(RTC_ADDR2, RTC_ADDR1, RTC_CENTURY);
+    i = readI2CMux();
+
+    dirI2CMux0(false);
+    writeI2CMux0(i | 0x80); // set write flag
+
+    digitalWrite(WE, 0);
+    delayMicroseconds(1);
+    digitalWrite(WE, 1);
+
+    for(i=0; i<8; i++){
+        setAddr(RTC_ADDR2, RTC_ADDR1, addrs[i]);
+        delayMicroseconds(I2CREADDELAYUS);
+        writeI2CMux0(*(vars[i]));
+        digitalWrite(WE, 0);
+        delayMicroseconds(1);
+        digitalWrite(WE, 1);
+    }
+    
+    // write flag is reset by the century write which is the last one
+
+    dirI2CMux0(true);
+}
+
 #define ALARM_ADDR2 0x1
 #define ALARM_ADDR1 0xFE
 #define ALARM_ADDR0 0x00

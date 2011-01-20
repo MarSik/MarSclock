@@ -228,7 +228,10 @@ public:
             break;
 
         case EV_HOLD:
-            if(data) (funcHold)();
+            if(data){
+                writeTime(tv);
+                (funcHold)();
+            }
             break;
         }
 

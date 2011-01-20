@@ -12,6 +12,7 @@ void dirI2CMux0(boolean input);
 void writeI2CMux0(byte data);
 void writeI2CData(int address, byte block, byte data);
 TimeValue readTime(bool fullmode);
+void writeTime(TimeValue &t);
 void writeAlarm(uint8_t idx, AlarmValue &v);
 AlarmValue readAlarm(uint8_t alidx);
 uint8_t findNextAlarm(TimeValue &tv, AlarmValue *upcoming);
