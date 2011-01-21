@@ -189,12 +189,13 @@ class BudikSetAlarmInterface: public BudikTimeInterface
     virtual void print(uint8_t col, uint8_t row, int data)
     {
         int i;
+        int alid = alarm->id + 1;
 
         BudikTimeInterface::print(col, row, 2);
         lcd.setCursor(col, row+2);
         lcd << "< "
-            << ((alarm->id<10)?"0":"")
-            << _DEC(alarm->id) << " > "
+            << ((alid<10)?"0":"")
+            << _DEC(alid) << " > "
             << ((alarm->hour<10)?"0":"") << _HEX(alarm->hour)
             << ":"
             << ((alarm->minute<10)?"0":"") << _HEX(alarm->minute);

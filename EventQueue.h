@@ -39,7 +39,7 @@ public:
     // the queue can hold is EVQUEUE_SIZE - 1.
     // Increasing this number will consume 2 * sizeof(int)
     // bytes of RAM for each unit.
-    static const int EVQUEUE_SIZE = 10;
+    static const int EVQUEUE_SIZE = 20;
 
     // Queue constructor
     EventQueue();

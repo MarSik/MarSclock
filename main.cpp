@@ -70,10 +70,19 @@ long debouncems = 0;
 // Alarm we are waiting for
 AlarmValue upcoming_alarm;
 bool is_upcoming_alarm;
+#define ALARM_DURATION 32400 // 180Hz * 180s; alarm turns off after 3 minutes
+uint16_t alarmHappening;
 
 void wakeupTimer(void)
 {
 	static long timer555 = 0;
+
+        // turn of alarm after specified time
+        if(alarmHappening){
+            alarmHappening--;
+            if(!alarmHappening) queue.enqueueEvent(EV_ALARM, 0);
+        }
+
 	if(timer555==0){
 		queue.enqueueEvent(EV_REFRESH, 0);
                 queue.enqueueEvent(EV_CHECKALARM, 0);
@@ -88,6 +97,8 @@ void rotInterrupt(void)
 	debouncems = millis();
 	
 	uint8_t b = digitalRead(ROTB);
+	if(!b) return; // we only want half the steps
+
 	uint8_t a = digitalRead(ROTA);
 	
 	if(b == a){
@@ -113,7 +124,7 @@ void setup() {
 	// Setup Temp.
 	analogReference(DEFAULT);
 	pinMode(TEMPERATURE, INPUT);
-	pinMode(A0, INPUT);
+	pinMode(VOLTAGE, INPUT);
 	
 	// Setup LCD backlight
 	analogWrite(LCDLIGHT, 128);
@@ -161,7 +172,7 @@ void setup() {
 	
         // Init states
         st_mainmenu.addMenuItem(0, "Podsviceni", ste_tobacklight);
-        st_mainmenu.addMenuItem(1, "Casovac", ste_toalarms);
+        st_mainmenu.addMenuItem(1, "Budik", ste_toalarms);
         st_mainmenu.addMenuItem(2, "Akce", ste_tosubmenu);
         st_mainmenu.addMenuItem(3, "Senzory", ste_tomainmenu);
         st_mainmenu.addMenuItem(4, "Zpet", ste_totime);
@@ -186,6 +197,7 @@ void setup() {
 	queue.enqueueEvent(EV_BACKLIGHT, 4);
         queue.enqueueEvent(EV_REFRESH, 0);
         queue.enqueueEvent(EV_REHASHALARM, 0);
+        alarmHappening = 0;
 
 	Serial.println("Setup done");
 }
@@ -222,8 +234,8 @@ void writeTemp(LiquidCrystal &lcd, uint8_t col, uint8_t row)
 	uint16_t vcccoef;
 	
 	// calibrate sensor
-	vcc = analogRead(A0); //23.5.2 of the manual, discard first reading
-	vcc = analogRead(A0); //read internal hard 1.1V
+	vcc = analogRead(VOLTAGE); //23.5.2 of the manual, discard first reading
+	vcc = analogRead(VOLTAGE); //read internal hard 1.1V
 	//should be 225 on stabilized 5V Aref
 	vcccoef = map(vcc, 0, 1024, 0, 500);
 	
@@ -304,13 +316,52 @@ void loop()
                     lbyte = readHex(Serial.read()) << 4;
                     while (!Serial.available());
                     lbyte += readHex(Serial.read());
-                    Serial << "Set!" << endl;
                     alarmBoard.write(0xff);
                     alarmBoard.write(addr);
                     alarmBoard.write(hbyte);
                     alarmBoard.write(lbyte);
                     alarmBoard.write(0xfc); //commit to leds
+                    Serial << "Set!" << endl;
                 }
+
+                else if(command=='b'){
+                        int l;
+                        for(l=0; l<16; l++){
+                            alarmBoard.write(0xff);
+                            alarmBoard.write(l);
+                            alarmBoard.write(0xf);
+                            alarmBoard.write(0xff);
+                        }
+                        alarmBoard.write(0xfd); //switch to second register
+                        for(l=0; l<16; l++){
+                            alarmBoard.write(0xff);
+                            alarmBoard.write(l);
+                            alarmBoard.write(0x0);
+                            alarmBoard.write(0x00);
+                        }
+                        alarmBoard.write(0xfb); //start blinking
+                        alarmHappening = ALARM_DURATION;
+                }
+
+                else if(command=='f'){
+                        int l;
+                        for(l=0; l<16; l++){
+                            alarmBoard.write(0xff);
+                            alarmBoard.write(l);
+                            alarmBoard.write(0xf);
+                            alarmBoard.write(0xff);
+                        }
+                        alarmBoard.write(0xfd); //switch to second register
+                        for(l=0; l<16; l++){
+                            alarmBoard.write(0xff);
+                            alarmBoard.write(l);
+                            alarmBoard.write(0x0);
+                            alarmBoard.write(0x00);
+                        }
+                        alarmBoard.write(0xfe); //start fade
+                        alarmHappening = ALARM_DURATION;
+                }
+
 	} 
 	
         if(vw_have_message()){
@@ -350,13 +401,38 @@ void loop()
                        tv.minute == upcoming_alarm.minute &&
                        (upcoming_alarm.dow & _BV(tv.dow-1))){
                         is_upcoming_alarm = false;
-                        queue.enqueueEvent(EV_ALARM, upcoming_alarm.id);
+                        queue.enqueueEvent(EV_ALARM, 1+upcoming_alarm.id);
                     }
                 }
                 else if(event==EV_REHASHALARM){
                     TimeValue tv = readTime(false);
                     uint8_t enabledAlarms = findNextAlarm(tv, &upcoming_alarm);
                     is_upcoming_alarm =  (enabledAlarms > 0);
+                }
+                else if(event==EV_ALARM){
+                    if(data){
+                        int l;
+                        for(l=0; l<16; l++){
+                            alarmBoard.write(0xff);
+                            alarmBoard.write(l);
+                            alarmBoard.write(0xf);
+                            alarmBoard.write(0xff);
+                        }
+                        alarmBoard.write(0xfd); //switch to second register
+                        for(l=0; l<16; l++){
+                            alarmBoard.write(0xff);
+                            alarmBoard.write(l);
+                            alarmBoard.write(0x0);
+                            alarmBoard.write(0x00);
+                        }
+                        alarmBoard.write(0xfb); //start blinking
+                        alarmHappening = ALARM_DURATION;
+                    }
+                    else{
+                        alarmBoard.write(0xf0);
+                        alarmBoard.write(0xfc); //commit to leds
+                        alarmHappening = 0;
+                    }
                 }
 
                 fsm.getCurrentState().event(event, data);

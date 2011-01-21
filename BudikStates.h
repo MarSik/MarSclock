@@ -30,12 +30,13 @@ protected:
     void (&funcPress)();
     void (&funcHold)();
     BudikTimeInterface &out;
+    uint8_t resetAlarmMotion;
 
 public:
  TimeState(BudikTimeInterface &out,
            void (&funcPress)(),
            void (&funcHold)()):
-    BudikState(), funcPress(funcPress), funcHold(funcHold), out(out)
+    BudikState(), funcPress(funcPress), funcHold(funcHold), out(out), resetAlarmMotion(0)
     {
     };
 
@@ -43,8 +44,17 @@ public:
     {
         switch(event){
         case EV_LEFT:
+            if(resetAlarmMotion == 0) resetAlarmMotion = 1;
+            else if(resetAlarmMotion == 1) resetAlarmMotion = 1;
+            else if(resetAlarmMotion == 2){
+                resetAlarmMotion = 0;
+                queue.enqueueEvent(EV_ALARM, 0);
+            }
             break;
         case EV_RIGHT:
+            if(resetAlarmMotion == 1) resetAlarmMotion = 2;
+            else if(resetAlarmMotion == 2) resetAlarmMotion = 2; 
+            else resetAlarmMotion = 0;
             break;
         case EV_SELECT:
             if(data) (funcPress)();
@@ -230,6 +240,7 @@ public:
         case EV_HOLD:
             if(data){
                 writeTime(tv);
+                tv = readTime(true); // to force refresh of cache
                 (funcHold)();
             }
             break;

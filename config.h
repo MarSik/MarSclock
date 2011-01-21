@@ -46,6 +46,9 @@
 
 // Alarm board commlink
 #define ALRX A1
-#define ALTX A3
+#define ALTX A0
+
+// Volage measurement
+#define VOLTAGE A3
 
 #endif
