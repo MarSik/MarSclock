@@ -110,10 +110,9 @@ void rotInterrupt(void)
 }
 
 void setup() {
-	// RTC WE  & OE, RFLink EN
+	// RTC WE  & OE
 	pinMode(WE, OUTPUT);
 	pinMode(OE, OUTPUT);
-	pinMode(RFE, OUTPUT);
 
 	digitalWrite(WE, 1); // disable write
 	digitalWrite(OE, 1); // disable read
@@ -161,6 +160,7 @@ void setup() {
 	attachInterrupt(INT555, wakeupTimer, FALLING);
 
         // Init wireless, but keep the receiver disabled
+	pinMode(RFE, OUTPUT);
 	digitalWrite(RFE, 1); // disable wireless modules
         vw_set_tx_pin(5);
         vw_set_rx_pin(6);
@@ -205,6 +205,7 @@ void setup() {
 // Pin Change vector 0 (Port B)
 ISR(PCINT0_vect){
         static uint8_t oldstate = 0;
+        static long holdtime = 0;
 
 	if(millis() - debouncems < DEBOUNCETIME) return;
 
@@ -212,14 +213,17 @@ ISR(PCINT0_vect){
         // hold event after 3s
         if(!oldstate &&
            (PINB & 0x02) &&
-           (millis()-debouncems) >= HOLDTIME){
+           holdtime &&
+           (millis()-holdtime) >= HOLDTIME){
             queue.enqueueEvent(EV_HOLD, (PINB & 0x02));
         }
         else if(!oldstate && (PINB & 0x02)){
             queue.enqueueEvent(EV_SELECT, (PINB & 0x02));
+            holdtime = 0;
         }
         else{
             queue.enqueueEvent(EV_SELECT, (PINB & 0x02));
+            holdtime = millis();
         }
 
 	debouncems = millis();
@@ -232,10 +236,12 @@ void writeTemp(LiquidCrystal &lcd, uint8_t col, uint8_t row)
 	uint16_t temp = 0;
 	uint16_t vcc;
 	uint16_t vcccoef;
-	
+        uint8_t i;
+
 	// calibrate sensor
 	vcc = analogRead(VOLTAGE); //23.5.2 of the manual, discard first reading
 	vcc = analogRead(VOLTAGE); //read internal hard 1.1V
+
 	//should be 225 on stabilized 5V Aref
 	vcccoef = map(vcc, 0, 1024, 0, 500);
 	
@@ -243,9 +249,9 @@ void writeTemp(LiquidCrystal &lcd, uint8_t col, uint8_t row)
 	analogRead(TEMPERATURE);
 	
 	// average 4 readings
-	//for(i=0; i<4; i++)
-	temp = analogRead(TEMPERATURE);
-	//temp = temp >> 2;
+	for(i=0; i<4; i++)
+            temp += analogRead(TEMPERATURE);
+	temp >>= 2;
 	temp = map(temp, 0, 1024, 0, 500);
 	temp = temp - 273; //2982mV = 25C, 1C = 10mV
 	lcd.setCursor(col+2,row);

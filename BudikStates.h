@@ -92,13 +92,14 @@ protected:
     BudikSetTimeInterface &out;
     uint8_t nibble;
     bool set;
+    bool confirm;
     TimeValue tv;
 
 public:
  SetTimeState(BudikSetTimeInterface &out,
            void (&funcHold)()):
     BudikState(), funcHold(funcHold), out(out),
-        nibble(0), set(false)
+        nibble(0), set(false), confirm(false)
     {
     };
 
@@ -164,13 +165,17 @@ public:
                         queue.enqueueEvent(EV_REFRESH, 0);
                     }
                     break;
+                case 7:
+                    confirm = !confirm;
+                    queue.enqueueEvent(EV_REFRESH, 0);
+                    break;
                 }
             }
             break;
 
         case EV_RIGHT:
             // select number on the right
-            if(!set && nibble<6){
+            if(!set && nibble<7){
                 nibble++;
                 queue.enqueueEvent(EV_REFRESH, 0);
             }
@@ -225,6 +230,10 @@ public:
                         queue.enqueueEvent(EV_REFRESH, 0);
                     }
                     break;
+                case 7:
+                    confirm = !confirm;
+                    queue.enqueueEvent(EV_REFRESH, 0);
+                    break;
                 }
             }
             break;
@@ -234,13 +243,17 @@ public:
             if(data){
                 set = !set;
                 queue.enqueueEvent(EV_REFRESH, 0);
+
+                if(nibble==7 && confirm){
+                    writeTime(tv);
+                    tv = readTime(true); // to force refresh of cache
+                    (funcHold)();
+                }
             }
             break;
 
         case EV_HOLD:
             if(data){
-                writeTime(tv);
-                tv = readTime(true); // to force refresh of cache
                 (funcHold)();
             }
             break;
@@ -258,6 +271,7 @@ public:
         out.setup(0, 0);
         tv = readTime(false);
         tv.second = 0;
+        confirm = false;
         refresh(1);
     }
 
@@ -269,6 +283,7 @@ public:
     {
         out.setTime(tv);
         out.setMode(set);
+        out.setConfirm(confirm);
         out.setNibble(nibble);
         out.print(0, 0, data);
     }

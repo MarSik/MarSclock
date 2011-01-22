@@ -10,7 +10,8 @@ BudikInterface::UIPosition BudikSetTimeInterface::nibbles[] = {
     {1, 8},
     {0, 8},
     {0, 12},
-    {0, 14}
+    {0, 14},
+    {3, 1}
 };
 
 BudikInterface::UIPosition BudikSetAlarmInterface::nibbles[] = {

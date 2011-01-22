@@ -135,23 +135,26 @@ class BudikSetTimeInterface: public BudikTimeInterface
 {
  public:
  BudikSetTimeInterface(LiquidCrystal &out):
-    BudikTimeInterface(out), set_mode(false), nibble(0)
+    BudikTimeInterface(out), set_mode(false), nibble(0), confirm_mode(false)
     {}
 
     virtual void print(uint8_t col, uint8_t row, int data)
     {
         BudikTimeInterface::print(col, row, 3);
         clearRow(col, row+2);
+
+        lcd.setCursor(col, row+3);
+        if(!confirm_mode) lcd << " Ulozit cas?   ";
+        else lcd << " Ano nastavit!";
+
         lcd.setCursor(col+nibbles[nibble].column, row+nibbles[nibble].row);
-        lcd.enableCursor(true, !set_mode);
+        lcd.enableCursor(true, set_mode);
     }
 
     virtual void setup(uint8_t col, uint8_t row)
     {
         BudikTimeInterface::setup(col, row);
         clearRow(col, row+2);
-        lcd.setCursor(col, row+3);
-        lcd << "  Nastavit cas";
     }
 
     virtual void setMode(bool mode)
@@ -164,7 +167,13 @@ class BudikSetTimeInterface: public BudikTimeInterface
         nibble = n;
     }
 
+    virtual void setConfirm(bool mode)
+    {
+        confirm_mode = mode;
+    }
+
  protected:
+    bool confirm_mode;
     bool set_mode;
     uint8_t nibble;
     static UIPosition nibbles[];
@@ -210,7 +219,7 @@ class BudikSetAlarmInterface: public BudikTimeInterface
         }
 
         lcd.setCursor(col+nibbles[nibble].column, row+nibbles[nibble].row);
-        lcd.enableCursor(true, !set_mode);
+        lcd.enableCursor(true, set_mode);
     }
 
     virtual void setup(uint8_t col, uint8_t row)
