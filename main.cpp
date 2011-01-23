@@ -470,6 +470,7 @@ void loop()
                         }
                         alarmBoard.write(0xfb); //start blinking
                         alarmTimer = ALARM_DURATION;
+                        if(!inactivityTimer) queue.enqueueEvent(EV_BACKLIGHT, st_backlight.getBacklight());
                     }
                     else{
                         alarmBoard.write(0xf0);
