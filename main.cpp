@@ -63,24 +63,49 @@ void ste_tobacklight() {fsm.transitionTo(st_backlight);}
 #define SKIP555 1800 // about 10s
 
 // Button debounce counter
-#define DEBOUNCETIME 20
-#define HOLDTIME 3000
-long debouncems = 0;
+#define DEBOUNCETIME 6 // 180Hz * 30ms = 6
+#define HOLDTIME 900 // 180Hz * 5s = 900
+#define OFFTIME 2700 // 180Hz * 15s = 2700
+
+uint8_t debounceTimer;
+uint16_t holdTimer;
+uint16_t inactivityTimer;
 
 // Alarm we are waiting for
 AlarmValue upcoming_alarm;
 bool is_upcoming_alarm;
+
 #define ALARM_DURATION 32400 // 180Hz * 180s; alarm turns off after 3 minutes
-uint16_t alarmHappening;
+uint16_t alarmTimer;
 
 void wakeupTimer(void)
 {
 	static long timer555 = 0;
 
         // turn of alarm after specified time
-        if(alarmHappening){
-            alarmHappening--;
-            if(!alarmHappening) queue.enqueueEvent(EV_ALARM, 0);
+        if(alarmTimer){
+            alarmTimer--;
+            if(!alarmTimer) queue.enqueueEvent(EV_ALARM, 0);
+        }
+
+        // debounce timer
+        if(debounceTimer){
+            debounceTimer--;
+        }
+
+        // debounce timer
+        if(holdTimer){
+            holdTimer--;
+        }
+
+        // off timer
+        if(inactivityTimer){
+            inactivityTimer--;
+            if(!inactivityTimer){
+                // user did nothing for past 15 secs, disable backlight and return to time display
+                queue.enqueueEvent(EV_BACKLIGHT, 0);
+                ste_totime();
+            }
         }
 
 	if(timer555==0){
@@ -93,8 +118,11 @@ void wakeupTimer(void)
 
 void rotInterrupt(void)
 {
-	if(millis() - debouncems < DEBOUNCETIME) return;
-	debouncems = millis();
+	if(debounceTimer) return;
+	debounceTimer = DEBOUNCETIME;
+
+        if(!inactivityTimer) queue.enqueueEvent(EV_BACKLIGHT, st_backlight.getBacklight());
+        inactivityTimer = OFFTIME;
 	
 	uint8_t b = digitalRead(ROTB);
 	if(!b) return; // we only want half the steps
@@ -194,10 +222,15 @@ void setup() {
 	PCICR |= _BV(PCIE0); 
 
         // Inital refresh of gui
-	queue.enqueueEvent(EV_BACKLIGHT, 4);
+	queue.enqueueEvent(EV_BACKLIGHT, 8);
         queue.enqueueEvent(EV_REFRESH, 0);
         queue.enqueueEvent(EV_REHASHALARM, 0);
-        alarmHappening = 0;
+
+        // Timers
+        alarmTimer = 0;
+        debounceTimer = 0;
+        holdTimer = 0;
+        inactivityTimer = OFFTIME;
 
 	Serial.println("Setup done");
 }
@@ -205,28 +238,32 @@ void setup() {
 // Pin Change vector 0 (Port B)
 ISR(PCINT0_vect){
         static uint8_t oldstate = 0;
-        static long holdtime = 0;
 
-	if(millis() - debouncems < DEBOUNCETIME) return;
+	if(debounceTimer) return;
+        debounceTimer = DEBOUNCETIME;
+
+        if(!inactivityTimer) queue.enqueueEvent(EV_BACKLIGHT, st_backlight.getBacklight());
 
         // change from LOW to HIGH (active LOW)
         // hold event after 3s
         if(!oldstate &&
            (PINB & 0x02) &&
-           holdtime &&
-           (millis()-holdtime) >= HOLDTIME){
+           holdTimer==0){
             queue.enqueueEvent(EV_HOLD, (PINB & 0x02));
+            inactivityTimer = OFFTIME;
         }
         else if(!oldstate && (PINB & 0x02)){
-            queue.enqueueEvent(EV_SELECT, (PINB & 0x02));
-            holdtime = 0;
+            // first release after the display was lighted does nothing
+            if(inactivityTimer) queue.enqueueEvent(EV_SELECT, (PINB & 0x02));
+            inactivityTimer = OFFTIME;
+            holdTimer = 0;
         }
         else{
-            queue.enqueueEvent(EV_SELECT, (PINB & 0x02));
-            holdtime = millis();
+            // first press event when the display is off just lights it
+            if(inactivityTimer) queue.enqueueEvent(EV_SELECT, (PINB & 0x02));
+            holdTimer = HOLDTIME;
         }
 
-	debouncems = millis();
         oldstate = (PINB & 0x02);
 }
 
@@ -346,7 +383,7 @@ void loop()
                             alarmBoard.write(0x00);
                         }
                         alarmBoard.write(0xfb); //start blinking
-                        alarmHappening = ALARM_DURATION;
+                        alarmTimer = ALARM_DURATION;
                 }
 
                 else if(command=='f'){
@@ -365,7 +402,7 @@ void loop()
                             alarmBoard.write(0x00);
                         }
                         alarmBoard.write(0xfe); //start fade
-                        alarmHappening = ALARM_DURATION;
+                        alarmTimer = ALARM_DURATION;
                 }
 
 	} 
@@ -432,12 +469,12 @@ void loop()
                             alarmBoard.write(0x00);
                         }
                         alarmBoard.write(0xfb); //start blinking
-                        alarmHappening = ALARM_DURATION;
+                        alarmTimer = ALARM_DURATION;
                     }
                     else{
                         alarmBoard.write(0xf0);
                         alarmBoard.write(0xfc); //commit to leds
-                        alarmHappening = 0;
+                        alarmTimer = 0;
                     }
                 }
 

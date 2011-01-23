@@ -496,7 +496,7 @@ protected:
 
 class BacklightState : public BudikState {
 protected:
-    int backlight;
+    uint8_t backlight;
     void (&func)();
     BudikBacklightInterface &out;
 
@@ -541,6 +541,10 @@ public:
         out.print(0, 0, data);
     }
 
+    uint8_t getBacklight()
+    {
+        return backlight;
+    }
 };
 
 
