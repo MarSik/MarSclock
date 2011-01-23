@@ -166,12 +166,12 @@ void setup() {
 	delay(100); // min 75ms power up timer
 	writeI2CData(I2CADDR, 0x6, 0x0); // Set output mode
 	writeI2CData(I2CADDR, 0x7, 0x0);
-	writeI2CData(I2CADDR, 0x0, 0xFF); // Set address
-	writeI2CData(I2CADDR, 0x1, 0xFF);
 	
 	writeI2CData(I2CDATA, 0x6 + I2CLCD, 0x0); // LCD set output mode
 	writeI2CData(I2CDATA, 0x6 + I2CRTC, 0xFF); // RTC set input mode
-	writeI2CData(I2CDATA, I2CLCD, 0x80); // highest bit is used for address
+
+        // Set default RTC address
+        setAddr(0x1, 0xff, 0xff);
 	
 	// set high resolution mode for I2C expander DATA RTC port
 	writeI2CData(I2CDATA, 0xA + I2CRTC, 0x1);
@@ -181,7 +181,6 @@ void setup() {
 	lcd.begin();
 	lcd.clear();
         lcd.enableCursor(false, false);
-        analogWrite(11, 128); // initialize backlight and it's PWM driver
 
 	// Init 555 interrupt
 	pinMode(TIMER, INPUT);
@@ -308,18 +307,7 @@ void loop()
 	if (Serial.available() > 0) {
 		command = Serial.read();
 		
-		if(command=='L'){
-                    while (Serial.available() <= 0) delayMicroseconds(2);
-                    data1 = readHex(Serial.read());
-                    while (Serial.available() <= 0) delayMicroseconds(2);
-                    data1 = data1 << 4;
-                    data1 += readHex(Serial.read());
-                    if(data1==0) digitalWrite(LCDLIGHT, LOW);
-                    else if(data1==0xFF) digitalWrite(LCDLIGHT, HIGH);
-                    else analogWrite(LCDLIGHT, data1);
-		}
-
-                else if(command==',') queue.enqueueEvent(EV_LEFT, 0);
+                if(command==',') queue.enqueueEvent(EV_LEFT, 0);
                 else if(command=='.') queue.enqueueEvent(EV_RIGHT, 0);
                 else if(command==' ') queue.enqueueEvent(EV_SELECT, 1);
                 else if(command=='c') queue.enqueueEvent(EV_SELECT, 0);

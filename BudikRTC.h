@@ -6,7 +6,7 @@
 
 #define ALARM_MAX 64
 
-void setAddr(int val);
+void setAddr(uint8_t a2, uint8_t a1, uint8_t a0);
 int readI2CMux();
 void dirI2CMux0(boolean input);
 void writeI2CMux0(byte data);
