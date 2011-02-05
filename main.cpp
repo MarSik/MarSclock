@@ -63,7 +63,7 @@ void ste_tobacklight() {fsm.transitionTo(st_backlight);}
 #define SKIP555 1800 // about 10s
 
 // Button debounce counter
-#define DEBOUNCETIME 6 // 180Hz * 30ms = 6
+#define DEBOUNCETIME 5 // 180Hz * 25ms = 5
 #define HOLDTIME 900 // 180Hz * 5s = 900
 #define OFFTIME 2700 // 180Hz * 15s = 2700
 
@@ -75,8 +75,9 @@ uint16_t inactivityTimer;
 AlarmValue upcoming_alarm;
 bool is_upcoming_alarm;
 
-#define ALARM_DURATION 32400 // 180Hz * 180s; alarm turns off after 3 minutes
-uint16_t alarmTimer;
+#define ALARM_DURATION (180*60*20) // 180Hz * 60s * 20m; alarm turns off after 20 minutes
+#define ALARM_BLINK (ALARM_DURATION>>1) // 10 minutes
+uint32_t alarmTimer;
 
 void wakeupTimer(void)
 {
@@ -85,7 +86,8 @@ void wakeupTimer(void)
         // turn of alarm after specified time
         if(alarmTimer){
             alarmTimer--;
-            if(!alarmTimer) queue.enqueueEvent(EV_ALARM, 0);
+            if(ALARM_DURATION - alarmTimer == ALARM_BLINK) queue.enqueueEvent(EV_ALARMMODE, 1);
+            else if(!alarmTimer) queue.enqueueEvent(EV_ALARM, 0);
         }
 
         // debounce timer
@@ -171,7 +173,8 @@ void setup() {
 	writeI2CData(I2CDATA, 0x6 + I2CRTC, 0xFF); // RTC set input mode
 
         // Set default RTC address
-        setAddr(0x1, 0xff, 0xff);
+        setAddr(0x0, 0x00, 0x00); // to reset the cache address
+        setAddr(0x1, 0xff, 0xff); // best default for RTC
 	
 	// set high resolution mode for I2C expander DATA RTC port
 	writeI2CData(I2CDATA, 0xA + I2CRTC, 0x1);
@@ -393,6 +396,10 @@ void loop()
                         alarmTimer = ALARM_DURATION;
                 }
 
+                else if(command='A'){
+                        queue.enqueueEvent(EV_ALARM, 1);
+                }
+
 	} 
 	
         if(vw_have_message()){
@@ -453,10 +460,18 @@ void loop()
                         for(l=0; l<16; l++){
                             alarmBoard.write(0xff);
                             alarmBoard.write(l);
-                            alarmBoard.write(0x0);
-                            alarmBoard.write(0x00);
+
+                            // start with red on quarter intensity 
+                            if(l<10){
+                                alarmBoard.write(0x0);
+                                alarmBoard.write(0x00);
+                            }
+                            else{
+                                alarmBoard.write(0x4);
+                                alarmBoard.write(0x00);
+                            }
                         }
-                        alarmBoard.write(0xfb); //start blinking
+                        alarmBoard.write(0xfe); //start fade
                         alarmTimer = ALARM_DURATION;
                         if(!inactivityTimer) queue.enqueueEvent(EV_BACKLIGHT, st_backlight.getBacklight());
                     }
@@ -464,6 +479,25 @@ void loop()
                         alarmBoard.write(0xf0);
                         alarmBoard.write(0xfc); //commit to leds
                         alarmTimer = 0;
+                    }
+                }
+                else if(event==EV_ALARMMODE){
+                    if(data){
+                        int l;
+                        for(l=0; l<16; l++){
+                            alarmBoard.write(0xff);
+                            alarmBoard.write(l);
+                            alarmBoard.write(0xf);
+                            alarmBoard.write(0xff);
+                        }
+                        alarmBoard.write(0xfd); //switch to second register
+                        for(l=0; l<16; l++){
+                            alarmBoard.write(0xff);
+                            alarmBoard.write(l);
+                            alarmBoard.write(0x0);
+                            alarmBoard.write(0x00);
+                        }
+                        alarmBoard.write(0xfb); //start blink
                     }
                 }
 
