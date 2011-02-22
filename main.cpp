@@ -1,4 +1,5 @@
 #include <WProgram.h>
+#include <avr/sleep.h>
 
 #include "Streaming.h"
 #include "I2CLiquidCrystal.h"
@@ -57,55 +58,76 @@ void ste_tosubmenu() {fsm.transitionTo(st_submenu);}
 void ste_tobacklight() {fsm.transitionTo(st_backlight);}
 //void ste_tosensors() {fsm.transitionTo(st_sensors);}
 
-// 555 timer at about 200Hz
-#define TIMER 2
-#define INT555 TIMER-2 //interrupt 0, pin 2
-#define SKIP555 1800 // about 10s
+#define INTSPERSECOND 1 //1Hz
+volatile uint8_t secondTimer;
+
+#define SKIP555 (INTSPERSECOND*10) // about 10s
 
 // Button debounce counter
-#define DEBOUNCETIME 5 // 180Hz * 25ms = 5
-#define HOLDTIME 900 // 180Hz * 5s = 900
-#define OFFTIME 2700 // 180Hz * 15s = 2700
+#define DEBOUNCETIME 5 //180Hz * 5 = 27ms
+volatile uint8_t debounceTimer;
 
-uint8_t debounceTimer;
-uint16_t holdTimer;
-uint16_t inactivityTimer;
+#define HOLDTIME (INTSPERSECOND*5) // 5s
+#define OFFTIME (INTSPERSECOND*15) // 15s
+
+volatile uint8_t holdTimer;
+volatile uint8_t inactivityTimer;
 
 // Alarm we are waiting for
 AlarmValue upcoming_alarm;
-bool is_upcoming_alarm;
+volatile bool is_upcoming_alarm;
 
-#define ALARM_DURATION (180*60*20) // 180Hz * 60s * 20m; alarm turns off after 20 minutes
-#define ALARM_BLINK (ALARM_DURATION>>1) // 10 minutes
-uint32_t alarmTimer;
+#define ALARM_DURATION (60*45) // 60s * 45m; alarm turns off after 45 minutes
+#define ALARM_BLINK (60*25) // 25 minutes
+volatile uint16_t alarmTimer;
 
-void wakeupTimer(void)
+inline bool debounce()
+{
+    if(!debounceTimer){
+        debounceTimer = DEBOUNCETIME;
+        return false; // no debounce, valid event
+    }
+    else return true; // debouncing, discard event
+}
+
+// 555 timer
+void debounceInterrupt()
+{
+    if(debounceTimer) debounceTimer--;
+}
+
+ISR(WDT_vect)
 {
 	static long timer555 = 0;
 
-        // turn of alarm after specified time
-        if(alarmTimer){
-            alarmTimer--;
-            if(ALARM_DURATION - alarmTimer == ALARM_BLINK) queue.enqueueEvent(EV_ALARMMODE, 1);
-            else if(!alarmTimer) queue.enqueueEvent(EV_ALARM, 0);
+        // triggers once per second
+        if(secondTimer){
+            secondTimer--;
+            if(!secondTimer){
+                secondTimer = INTSPERSECOND;
+
+                // turn of alarm after specified time
+                if(alarmTimer){
+                    alarmTimer--;
+                    if(ALARM_DURATION - alarmTimer == ALARM_BLINK) queue.enqueueEvent(EV_ALARMMODE, 1);
+                    else if(!alarmTimer) queue.enqueueEvent(EV_ALARM, 0);
+                }
+            }
         }
 
-        // debounce timer
-        if(debounceTimer){
-            debounceTimer--;
-        }
-
-        // debounce timer
+        // hold timer
         if(holdTimer){
             holdTimer--;
+            if(!holdTimer) queue.enqueueEvent(EV_HOLD, 1);
         }
 
-        // off timer
-        if(inactivityTimer){
+        // off timer, do not count during hold
+        if(!holdTimer && inactivityTimer){
             inactivityTimer--;
             if(!inactivityTimer){
                 // user did nothing for past 15 secs, disable backlight and return to time display
                 queue.enqueueEvent(EV_BACKLIGHT, 0);
+                queue.enqueueEvent(EV_INACTIVITY, 1);
                 ste_totime();
             }
         }
@@ -120,16 +142,15 @@ void wakeupTimer(void)
 
 void rotInterrupt(void)
 {
-	if(debounceTimer) return;
-	debounceTimer = DEBOUNCETIME;
+        if(debounce()) return;
 
         if(!inactivityTimer) queue.enqueueEvent(EV_BACKLIGHT, st_backlight.getBacklight());
         inactivityTimer = OFFTIME;
 	
 	uint8_t b = digitalRead(ROTB);
-	if(!b) return; // we only want half the steps
-
 	uint8_t a = digitalRead(ROTA);
+
+        if(!a) return; // we only want half the steps
 	
 	if(b == a){
 		queue.enqueueEvent(EV_RIGHT, 0);
@@ -139,6 +160,34 @@ void rotInterrupt(void)
 	}
 }
 
+// Pin Change vector 0 (Port B)
+ISR(PCINT0_vect){
+        static uint8_t oldstate = 1;
+
+	if(debounce()) return;
+        if(!inactivityTimer) queue.enqueueEvent(EV_BACKLIGHT, st_backlight.getBacklight());
+
+        // change from LOW to HIGH (active LOW)
+        if(!oldstate && (PINB & 0x02) &&
+           holdTimer==0){
+            inactivityTimer = OFFTIME; // hold event probably fired ages ago
+        }
+        else if(!oldstate && (PINB & 0x02)){
+            // first release after the display was lighted does nothing
+            // another presses a button
+            if(inactivityTimer) queue.enqueueEvent(EV_SELECT, (PINB & 0x02));
+            inactivityTimer = OFFTIME;
+            holdTimer = 0; // reset hold timer
+        }
+        else{
+            // first press event when the display is off just lights it
+            if(inactivityTimer) queue.enqueueEvent(EV_SELECT, (PINB & 0x02));
+            holdTimer = HOLDTIME;
+        }
+
+        oldstate = (PINB & 0x02);
+}
+
 void setup() {
 	// RTC WE  & OE
 	pinMode(WE, OUTPUT);
@@ -146,9 +195,6 @@ void setup() {
 
 	digitalWrite(WE, 1); // disable write
 	digitalWrite(OE, 1); // disable read
-	
-	// Setup Timer
-	pinMode(TIMER, INPUT);
 	
 	// Setup Temp.
 	analogReference(DEFAULT);
@@ -186,8 +232,15 @@ void setup() {
         lcd.enableCursor(false, false);
 
 	// Init 555 interrupt
-	pinMode(TIMER, INPUT);
-	attachInterrupt(INT555, wakeupTimer, FALLING);
+        attachInterrupt(0, debounceInterrupt, FALLING);
+	EIMSK |= _BV(INT0);
+	EICRA = ISC01; // falling edge
+
+        // Set Watchdog for timer operation
+        cli();
+        WDTCSR |= _BV(WDCE) | _BV(WDE); // enable change mode
+        WDTCSR = _BV(WDIE) | _BV(WDP2) | _BV(WDP1); // interrupt once per second
+        sei();
 
         // Init wireless, but keep the receiver disabled
 	pinMode(RFE, OUTPUT);
@@ -230,44 +283,14 @@ void setup() {
 
         // Timers
         alarmTimer = 0;
-        debounceTimer = 0;
         holdTimer = 0;
+        debounceTimer = 0;
         inactivityTimer = OFFTIME;
+        secondTimer = INTSPERSECOND;
 
 	Serial.println("Setup done");
 }
 
-// Pin Change vector 0 (Port B)
-ISR(PCINT0_vect){
-        static uint8_t oldstate = 0;
-
-	if(debounceTimer) return;
-        debounceTimer = DEBOUNCETIME;
-
-        if(!inactivityTimer) queue.enqueueEvent(EV_BACKLIGHT, st_backlight.getBacklight());
-
-        // change from LOW to HIGH (active LOW)
-        // hold event after 3s
-        if(!oldstate &&
-           (PINB & 0x02) &&
-           holdTimer==0){
-            queue.enqueueEvent(EV_HOLD, (PINB & 0x02));
-            inactivityTimer = OFFTIME;
-        }
-        else if(!oldstate && (PINB & 0x02)){
-            // first release after the display was lighted does nothing
-            if(inactivityTimer) queue.enqueueEvent(EV_SELECT, (PINB & 0x02));
-            inactivityTimer = OFFTIME;
-            holdTimer = 0;
-        }
-        else{
-            // first press event when the display is off just lights it
-            if(inactivityTimer) queue.enqueueEvent(EV_SELECT, (PINB & 0x02));
-            holdTimer = HOLDTIME;
-        }
-
-        oldstate = (PINB & 0x02);
-}
 
 
 void writeTemp(LiquidCrystal &lcd, uint8_t col, uint8_t row)
@@ -291,15 +314,53 @@ void writeTemp(LiquidCrystal &lcd, uint8_t col, uint8_t row)
 	for(i=0; i<4; i++)
             temp += analogRead(TEMPERATURE);
 	temp >>= 2;
+
 	temp = map(temp, 0, 1024, 0, 500);
 	temp = temp - 273; //2982mV = 25C, 1C = 10mV
+
 	lcd.setCursor(col+2,row);
 	if(temp<10) lcd << ' ';
 	lcd << temp << 'C';
+
 	lcd.setCursor(col,row+1);
-	lcd << "     ";
-	lcd.setCursor(col,row+1);
-	lcd << _DEC(vcccoef/100) << "." << ((vcccoef%100 > 10)?"":"0") << _DEC(vcccoef % 100) << "V";
+	lcd << _DEC(vcccoef/100) << "." << (((vcccoef%100) < 10)?"0":"") << _DEC(vcccoef % 100) << "V";
+}
+
+void sleepMode(bool full)
+{
+    /* Now is the time to set the sleep mode. In the Atmega8 datasheet
+     * http://www.atmel.com/dyn/resources/prod_documents/doc2486.pdf on page 35
+     * there is a list of sleep modes which explains which clocks and 
+     * wake up sources are available in which sleep mode.
+     *
+     * In the avr/sleep.h file, the call names of these sleep modes are to be found:
+     *
+     * The 5 different modes are:
+     *     SLEEP_MODE_IDLE         -the least power savings 
+     *     SLEEP_MODE_ADC
+     *     SLEEP_MODE_PWR_SAVE
+     *     SLEEP_MODE_STANDBY
+     *     SLEEP_MODE_PWR_DOWN     -the most power savings
+     *
+     * For now, we want as much power savings as possible, so we 
+     * choose the according 
+     * sleep mode: SLEEP_MODE_PWR_DOWN
+     * 
+     */  
+
+    EIMSK &= ~_BV(INT0);
+    
+    if(full) set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // sleep mode is set here
+    else set_sleep_mode(SLEEP_MODE_IDLE);
+
+    sleep_enable();          // enables the sleep bit in the mcucr register
+                             // so sleep is possible. just a safety pin 
+    sleep_mode();            // here the device is actually put to sleep!!
+                             // THE PROGRAM CONTINUES FROM HERE AFTER WAKING UP
+
+    sleep_disable();         // first thing after waking from sleep:
+                             // disable sleep...
+    EIMSK |= _BV(INT0);
 }
 
 void loop()
@@ -439,7 +500,8 @@ void loop()
                        tv.minute == upcoming_alarm.minute &&
                        (upcoming_alarm.dow & _BV(tv.dow-1))){
                         is_upcoming_alarm = false;
-                        queue.enqueueEvent(EV_ALARM, 1+upcoming_alarm.id);
+                        queue.enqueueEvent(EV_ALARM, 1);
+                        queue.enqueueEvent(EV_REHASHALARM, 0); // find next alarm
                     }
                 }
                 else if(event==EV_REHASHALARM){
@@ -450,18 +512,22 @@ void loop()
                 else if(event==EV_ALARM){
                     if(data){
                         int l;
+
+                        // full intensity for everything
                         for(l=0; l<16; l++){
                             alarmBoard.write(0xff);
                             alarmBoard.write(l);
                             alarmBoard.write(0xf);
                             alarmBoard.write(0xff);
                         }
+
                         alarmBoard.write(0xfd); //switch to second register
+
+                        // start with red on quarter intensity
                         for(l=0; l<16; l++){
                             alarmBoard.write(0xff);
                             alarmBoard.write(l);
 
-                            // start with red on quarter intensity 
                             if(l<10){
                                 alarmBoard.write(0x0);
                                 alarmBoard.write(0x00);
@@ -471,12 +537,16 @@ void loop()
                                 alarmBoard.write(0x00);
                             }
                         }
-                        alarmBoard.write(0xfe); //start fade
+
+                        // start fading
+                        alarmBoard.write(0xfe);
                         alarmTimer = ALARM_DURATION;
+
+                        // if not lit, light up the display
                         if(!inactivityTimer) queue.enqueueEvent(EV_BACKLIGHT, st_backlight.getBacklight());
                     }
                     else{
-                        alarmBoard.write(0xf0);
+                        alarmBoard.write(0xf0); //set 0 for everything
                         alarmBoard.write(0xfc); //commit to leds
                         alarmTimer = 0;
                     }
@@ -502,9 +572,14 @@ void loop()
                 }
 
                 fsm.getCurrentState().event(event, data);
+                fsm.update();
 	}
 
-        fsm.update();
+        // no events to process check if we can save some power
+        else{
+            // backlight is off, hold is not running and button is up -> total sleep
+            sleepMode(!inactivityTimer && !holdTimer && (PORTB & 0x02));
+        }
 }
 
 int main(void)

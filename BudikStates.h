@@ -56,6 +56,9 @@ public:
             else if(resetAlarmMotion == 2) resetAlarmMotion = 2; 
             else resetAlarmMotion = 0;
             break;
+        case EV_INACTIVITY:
+            resetAlarmMotion = 0;
+            break;
         case EV_SELECT:
             if(data) (funcPress)();
             break;

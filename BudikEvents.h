@@ -13,7 +13,9 @@ enum _events {
 	EV_BACKLIGHT,
         EV_CHECKALARM,
         EV_REHASHALARM,
-        EV_ALARM
+        EV_ALARM,
+        EV_ALARMMODE,
+        EV_INACTIVITY
 };
 
 // the event queue

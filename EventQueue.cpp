@@ -71,6 +71,10 @@ boolean EventQueue::enqueueEvent(int ev_code, int ev_param) {
     return false;
   }
 
+  // if the event duplicates the last unprocessed event, do nothing
+  if(numEvents && eventQueue[eventQueueHead] == ev_code && eventParam[eventQueueHead] == ev_param)
+      return false;
+
   // store the event
   eventQueue[eventQueueHead] = ev_code;
   eventParam[eventQueueHead] = ev_param;
